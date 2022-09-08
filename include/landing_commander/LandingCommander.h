@@ -30,11 +30,12 @@ class LandingCommander{
   ros::NodeHandle nodeHandle;
   message_filters::Subscriber<nav_msgs::OccupancyGrid>* gridMapSub;
   tf::MessageFilter<nav_msgs::OccupancyGrid>* tfgridMapSub;
+  ros::Publisher occupancySub;
   // geometry_msgs::Point* point;
   grid_map::GridMap gridMapConverted;
-
+  nav_msgs::OccupancyGrid gridMapOutput;
   double safetyRange;
 
-  
+  bool latchedTopics;
 };
 }
