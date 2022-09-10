@@ -34,7 +34,9 @@ class LandingCommander{
   // geometry_msgs::Point* point;
   grid_map::GridMap gridMapConverted;
   nav_msgs::OccupancyGrid gridMapOutput;
-  double safetyRange;
+  nav_msgs::OccupancyGrid previousOccupancyGrid;
+
+  float safetyRadius;
 
   bool latchedTopics;
 };

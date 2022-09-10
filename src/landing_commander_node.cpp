@@ -9,8 +9,10 @@ int main(int argc, char** argv){
 
   LandingCommander server(nh);
 
-  ros::MultiThreadedSpinner spinner(4);
-  spinner.spin();
+  ros::spin();
+  
+  // ros::MultiThreadedSpinner spinner(4);
+  // spinner.spin();
 
   return 0;
 }
