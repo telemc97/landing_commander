@@ -22,7 +22,22 @@ class LandingCommander{
 
 
   protected:
+
+  Eigen::MatrixXi splitncheck(const Eigen::MatrixXi& mapdata, Eigen::Array2i& robotIndex, int offset_w = 0, int offest_h = 0);
   
+  int maxDivider(int number){
+    int divider;
+    for (int i=2; i<number; i++){
+      if (number%i==0){
+        divider = i;
+      }
+      if (divider == number){
+        divider = 1;
+      }
+    }
+    return divider;
+  }
+
   tf::TransformListener tfListener;
 
   std::string baseFrameId;
@@ -34,7 +49,6 @@ class LandingCommander{
   // geometry_msgs::Point* point;
   grid_map::GridMap gridMapConverted;
   nav_msgs::OccupancyGrid gridMapOutput;
-  nav_msgs::OccupancyGrid previousOccupancyGrid;
 
   float safetyRadius;
 
