@@ -23,16 +23,18 @@ class LandingCommander{
 
   protected:
 
-  Eigen::MatrixXi splitncheck(const Eigen::MatrixXi& mapdata, Eigen::Array2i& robotIndex, int offset_w = 0, int offest_h = 0);
+  bool splitncheck(const Eigen::MatrixXf& mapdata, Eigen::Array2i& robotIndex, double resolution, double minLandA, Eigen::MatrixX3i& land_waypoints, int offset_w = 0, int offest_h = 0);
   
-  int maxDivider(int number){
+  inline int maxDivider(int number){
     int divider;
     for (int i=2; i<number; i++){
       if (number%i==0){
         divider = i;
+        break;
       }
       if (divider == number){
         divider = 1;
+        break;
       }
     }
     return divider;
@@ -49,6 +51,8 @@ class LandingCommander{
   // geometry_msgs::Point* point;
   grid_map::GridMap gridMapConverted;
   nav_msgs::OccupancyGrid gridMapOutput;
+  double minimumLandingArea;
+  // Eigen::MatrixXi l_waypoints;
 
   float safetyRadius;
 
