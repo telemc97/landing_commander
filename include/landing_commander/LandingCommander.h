@@ -6,6 +6,9 @@
 #include <message_filters/subscriber.h>
 #include <eigen_conversions/eigen_msg.h>
 
+#include <geometry_msgs/PointStamped.h>
+#include <tf/LinearMath/Transform.h>
+
 #include <nav_msgs/OccupancyGrid.h>
 #include <grid_map_core/GridMap.hpp>
 
@@ -23,7 +26,11 @@ class LandingCommander{
 
   protected:
 
-  bool splitncheck(const Eigen::MatrixXf& mapdata, Eigen::Array2i& robotIndex, double resolution, double minLandA, Eigen::MatrixX3i& land_waypoints, int offset_w = 0, int offest_h = 0);
+  bool toMatrix(const nav_msgs::OccupancyGrid& occupancyGrid, Eigen::MatrixXi& gridEigen);
+  bool toOccupancyGrid(const Eigen::MatrixXi& gridEigen, nav_msgs::OccupancyGrid& occupancyGrid, nav_msgs::OccupancyGrid initialOccupancyGrid);
+
+  bool splitncheck(const Eigen::MatrixXi& mapdata, Eigen::Array2i& robotIndex, double resolution, double minLandA, Eigen::MatrixX4i& land_waypoints, int offset_w = 0, int offest_h = 0);
+  
   
   inline int maxDivider(int number){
     int divider;
@@ -48,13 +55,11 @@ class LandingCommander{
   message_filters::Subscriber<nav_msgs::OccupancyGrid>* gridMapSub;
   tf::MessageFilter<nav_msgs::OccupancyGrid>* tfgridMapSub;
   ros::Publisher occupancySub;
-  // geometry_msgs::Point* point;
-  grid_map::GridMap gridMapConverted;
+  Eigen::MatrixXi OccupancyGridEigen;
   nav_msgs::OccupancyGrid gridMapOutput;
   double minimumLandingArea;
-  // Eigen::MatrixXi l_waypoints;
 
-  float safetyRadius;
+  int safetyRadius;
 
   bool latchedTopics;
 };

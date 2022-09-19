@@ -8,7 +8,7 @@ LandingCommander::LandingCommander(const ros::NodeHandle &nh_)
   gridMapSub(NULL),
   tfgridMapSub(NULL),
   baseFrameId("base_link"),
-  safetyRadius(2.0),
+  safetyRadius(2),
   latchedTopics(true),
   minimumLandingArea(3.0)
   {
@@ -40,32 +40,33 @@ void LandingCommander::gridHandler(const nav_msgs::OccupancyGrid::ConstPtr& grid
   tfListener.lookupTransform(baseFrameId, gridMap->header.frame_id, gridMap->header.stamp, worldToSensorTf);
   tf::Point robotOriginTf = worldToSensorTf.getOrigin();
   geometry_msgs::Point robotPosMsg;
-  Eigen::Vector3d robotPoseEigen3d;
-  tf::pointMsgToEigen(robotPosMsg, robotPoseEigen3d);
-  Eigen::Vector2d robotPoseEigen2d = robotPoseEigen3d.head(2);
-  GridMapRosConverter::fromOccupancyGrid(*gridMap, "occupancy_grid", gridMapConverted);
-  Index robotPoseIndex;
-  gridMapConverted.getIndex(robotPoseEigen2d, robotPoseIndex);
-  Eigen::MatrixXf& mapdata = gridMapConverted["occupancy_grid"];
-  for (GridMapIterator iterator0(gridMapConverted); !iterator0.isPastEnd(); ++iterator0){
-    if (gridMapConverted.at("occupancy_grid", *iterator0) == 100){
-      Position centerPos;
-      gridMapConverted.getPosition(*iterator0, centerPos);
-      for (CircleIterator iterator1(gridMapConverted, centerPos, safetyRadius); !iterator1.isPastEnd(); ++iterator1){
-        gridMapConverted.at("occupancy_grid", *iterator1) = 1;
+  tf::pointTFToMsg(robotOriginTf, robotPosMsg);
+  toMatrix(*gridMap, OccupancyGridEigen);
+  Eigen::Array2i robotPoseIndex;
+  robotPoseIndex = (robotPosMsg.x, robotPosMsg.y);
+  ROS_WARN("X: %i, Y: %i", robotPoseIndex(0), robotPoseIndex(1));
+  double res = gridMap->info.resolution;
+
+  for (int i=0;i<OccupancyGridEigen.rows();i++){
+    for (int j=0;j<OccupancyGridEigen.cols();j++){
+      if (OccupancyGridEigen(i,j)==100){
+        for (int k=i-safetyRadius/2;k<safetyRadius||k<OccupancyGridEigen.rows();k++){
+          for(int l=j-safetyRadius/2;l<safetyRadius||l<OccupancyGridEigen.cols();l++){
+            OccupancyGridEigen(k,l)=100;
+          }
+        }
       }
     }
-  }
+  }  
 
-  double res = gridMapConverted.getResolution();
-  Eigen::MatrixX3i land_points;
-  LandingCommander::splitncheck(mapdata, robotPoseIndex, res, minimumLandingArea, land_points);
+  Eigen::MatrixX4i land_points;
+  LandingCommander::splitncheck(OccupancyGridEigen, robotPoseIndex, res, minimumLandingArea, land_points);
 
-  GridMapRosConverter::toOccupancyGrid(gridMapConverted, "occupancy_grid", 0, 1, gridMapOutput);
+  toOccupancyGrid(OccupancyGridEigen, gridMapOutput, *gridMap);
   occupancySub.publish(gridMapOutput);
 }
 
-bool LandingCommander::splitncheck(const Eigen::MatrixXf& mapdata, Eigen::Array2i& robotIndex, double resolution, double minLandA, Eigen::MatrixX3i& land_waypoints, int offset_w, int offset_h){
+bool LandingCommander::splitncheck(const Eigen::MatrixXi& mapdata, Eigen::Array2i& robotIndex, double resolution, double minLandA, Eigen::MatrixX4i& land_waypoints, int offset_w, int offset_h){
   int rows = mapdata.rows();
   int cols = mapdata.cols();
   int w_div = LandingCommander::maxDivider(rows);
@@ -99,35 +100,37 @@ bool LandingCommander::splitncheck(const Eigen::MatrixXf& mapdata, Eigen::Array2
       }
     }
     if (best==0){
-      land_waypoints.resize(solutions,3);
+      land_waypoints.resize(solutions,4);
       for (int i=0;i<solutions;i++){
         for (int j=0;j<w_div;j++){
           for (int k=0;k<h_div;k++){
             if (score(j,k)==0){
               int centroid_w = (sub_w/2)+(sub_w*j)+offset_w;
               int centroid_h = (sub_h/2)+(sub_h*k)+offset_h;
-              int dist = std::sqrt(std::pow((robotIndex(0)-centroid_w), 2)+std::pow((robotIndex(1)-centroid_h), 2));
+              int dist2robot = std::sqrt(std::pow((robotIndex(0)-centroid_w), 2)+std::pow((robotIndex(1)-centroid_h), 2));
+              int dist2base = std::sqrt(std::pow(-centroid_w, 2)+std::pow(-centroid_h,2));
               land_waypoints(i,0) = centroid_w;
               land_waypoints(i,1) = centroid_h;
-              land_waypoints(i,2) = dist;
+              land_waypoints(i,2) = dist2robot;
+              land_waypoints(i,3) = dist2base;
             }
           }
         }
       }
-      Eigen::Matrix<int,1,3> temp;
+      Eigen::MatrixX4i temp;
       for (int i=0;i<solutions;i++){
         for (int j=i+1;j<solutions;j++){
           if (land_waypoints(i,2)>land_waypoints(j,2)){
-            temp = land_waypoints.block(i,0,1,3);
-            land_waypoints.block(i,0,1,3) = land_waypoints.block(j,0,1,3);
-            land_waypoints.block(j,0,1,3) = temp;
+            temp = land_waypoints.block(i,0,1,4);
+            land_waypoints.block(i,0,1,4) = land_waypoints.block(j,0,1,4);
+            land_waypoints.block(j,0,1,4) = temp;
           }
         }
       }
     }else{
       for(int i=0;i<w_div;i++){
         for(int j=0;j<h_div;j++){
-          Eigen::MatrixXf new_submap = mapdata.block((sub_w*i)+offset_w, (sub_h*j)+offset_h, sub_w, sub_h);
+          Eigen::MatrixXi new_submap = mapdata.block((sub_w*i)+offset_w, (sub_h*j)+offset_h, sub_w, sub_h);
           int new_offset_w = (sub_w*i)+offset_w;
           int new_offset_h = (sub_h*j)+offset_h;
           LandingCommander::splitncheck(new_submap, robotIndex, resolution, minLandA, land_waypoints, new_offset_w, new_offset_h);
@@ -138,6 +141,38 @@ bool LandingCommander::splitncheck(const Eigen::MatrixXf& mapdata, Eigen::Array2
   return true;
 }
 
+bool LandingCommander::toMatrix(const nav_msgs::OccupancyGrid& occupancyGrid, Eigen::MatrixXi& gridEigen){
+  int width = occupancyGrid.info.width;
+  int height = occupancyGrid.info.height;
+  gridEigen.resize(width,height);
+  for (std::vector<int8_t>::const_iterator iterator = occupancyGrid.data.begin(); iterator != occupancyGrid.data.end(); ++iterator) {
+    for (int i=0; i<width; i++){
+      for (int j=0; j<height; j++){
+        gridEigen(i,j)=*iterator;
+      }
+    }
+  }
+  return true;
+}
 
+bool LandingCommander::toOccupancyGrid(const Eigen::MatrixXi& gridEigen, nav_msgs::OccupancyGrid& occupancyGrid, nav_msgs::OccupancyGrid initialOccupancyGrid){
+  int width = gridEigen.rows();
+  int height = gridEigen.cols();
+  int size = width*height;
+  if (initialOccupancyGrid.info.height != height && initialOccupancyGrid.info.width != width){
+    ROS_WARN("shit went wrong");
+  }
+  occupancyGrid.info = initialOccupancyGrid.info;
+  occupancyGrid.header = initialOccupancyGrid.header;
+  occupancyGrid.data.resize(size);
+  int k = 0;
+  for (int i=0; i<width; i++){
+    for (int j=0; j<height; j++){
+      occupancyGrid.data[k] = gridEigen(i,j);
+      k++;
+    }
+  }
+    return true;
+}
 
 }
