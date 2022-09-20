@@ -7,7 +7,12 @@
 #include <eigen_conversions/eigen_msg.h>
 
 #include <geometry_msgs/PointStamped.h>
+#include <geometry_msgs/PoseStamped.h>
 #include <tf/LinearMath/Transform.h>
+
+#include <mavros_msgs/CommandBool.h>
+#include <mavros_msgs/SetMode.h>
+#include <mavros_msgs/State.h>
 
 #include <nav_msgs/OccupancyGrid.h>
 #include <grid_map_core/GridMap.hpp>
@@ -27,11 +32,18 @@ class LandingCommander{
   protected:
 
   bool toMatrix(const nav_msgs::OccupancyGrid& occupancyGrid, Eigen::MatrixXi& gridEigen);
-  bool toOccupancyGrid(const Eigen::MatrixXi& gridEigen, nav_msgs::OccupancyGrid& occupancyGrid, nav_msgs::OccupancyGrid initialOccupancyGrid);
+  bool toOccupancyGrid(const Eigen::MatrixXi& gridEigen, nav_msgs::OccupancyGrid& occupancyGrid, const nav_msgs::OccupancyGrid& initialOccupancyGrid);
 
   bool splitncheck(const Eigen::MatrixXi& mapdata, Eigen::Array2i& robotIndex, double resolution, double minLandA, Eigen::MatrixX4i& land_waypoints, int offset_w = 0, int offest_h = 0);
-  
-  
+  bool isIn(Eigen::MatrixX2i& matrix, const Eigen::Array2i Index);
+  Eigen::MatrixXi checkEmMarkEm(Eigen::MatrixXi& matrix, int& radius);
+
+  int checkNeighborsRadius (const double& safeAreaRadius, const double& resolution);
+
+  void state_cb(const mavros_msgs::State::ConstPtr& msg){
+    current_state = *msg;
+  }
+
   inline int maxDivider(int number){
     int divider;
     for (int i=2; i<number; i++){
@@ -47,6 +59,7 @@ class LandingCommander{
     return divider;
   }
 
+  mavros_msgs::State current_state;
   tf::TransformListener tfListener;
 
   std::string baseFrameId;
@@ -55,11 +68,13 @@ class LandingCommander{
   message_filters::Subscriber<nav_msgs::OccupancyGrid>* gridMapSub;
   tf::MessageFilter<nav_msgs::OccupancyGrid>* tfgridMapSub;
   ros::Publisher occupancySub;
+  ros::Publisher pos_setpoint;
+  ros::Subscriber mavros_state;
   Eigen::MatrixXi OccupancyGridEigen;
   nav_msgs::OccupancyGrid gridMapOutput;
   double minimumLandingArea;
 
-  int safetyRadius;
+  double safetyRadius;
 
   bool latchedTopics;
 };

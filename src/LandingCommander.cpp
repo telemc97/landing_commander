@@ -8,7 +8,7 @@ LandingCommander::LandingCommander(const ros::NodeHandle &nh_)
   gridMapSub(NULL),
   tfgridMapSub(NULL),
   baseFrameId("base_link"),
-  safetyRadius(2),
+  safetyRadius(5.0),
   latchedTopics(true),
   minimumLandingArea(3.0)
   {
@@ -16,7 +16,10 @@ LandingCommander::LandingCommander(const ros::NodeHandle &nh_)
     nodeHandle.param("robot_frame", baseFrameId, baseFrameId);
     nodeHandle.param("minimum_landing_area", minimumLandingArea, minimumLandingArea);
 
+    mavros_state = nodeHandle.subscribe<mavros_msgs::State>("mavros/state", 10, &LandingCommander::state_cb, this);
+
     occupancySub = nodeHandle.advertise<nav_msgs::OccupancyGrid>("occupancy_output", 5, latchedTopics);
+    pos_setpoint = nodeHandle.advertise<geometry_msgs::PoseStamped>("mavros/setpoint_position/local", 10);
 
     gridMapSub = new message_filters::Subscriber<nav_msgs::OccupancyGrid>(nodeHandle, "/projected_map", 10);
     tfgridMapSub = new tf::MessageFilter<nav_msgs::OccupancyGrid>(*gridMapSub, tfListener, baseFrameId, 10);
@@ -39,25 +42,15 @@ void LandingCommander::gridHandler(const nav_msgs::OccupancyGrid::ConstPtr& grid
   tf::StampedTransform worldToSensorTf;
   tfListener.lookupTransform(baseFrameId, gridMap->header.frame_id, gridMap->header.stamp, worldToSensorTf);
   tf::Point robotOriginTf = worldToSensorTf.getOrigin();
-  geometry_msgs::Point robotPosMsg;
-  tf::pointTFToMsg(robotOriginTf, robotPosMsg);
+  int robot_x = robotOriginTf.x();
+  int robot_y = robotOriginTf.y();
   toMatrix(*gridMap, OccupancyGridEigen);
   Eigen::Array2i robotPoseIndex;
-  robotPoseIndex = (robotPosMsg.x, robotPosMsg.y);
-  ROS_WARN("X: %i, Y: %i", robotPoseIndex(0), robotPoseIndex(1));
+  robotPoseIndex = (robot_x, robot_y);
+  // ROS_WARN("X: %i, Y: %i", robotPoseIndex(0), robotPoseIndex(1));
   double res = gridMap->info.resolution;
-
-  for (int i=0;i<OccupancyGridEigen.rows();i++){
-    for (int j=0;j<OccupancyGridEigen.cols();j++){
-      if (OccupancyGridEigen(i,j)==100){
-        for (int k=i-safetyRadius/2;k<safetyRadius||k<OccupancyGridEigen.rows();k++){
-          for(int l=j-safetyRadius/2;l<safetyRadius||l<OccupancyGridEigen.cols();l++){
-            OccupancyGridEigen(k,l)=100;
-          }
-        }
-      }
-    }
-  }  
+  int subGridRadius = checkNeighborsRadius(safetyRadius, res);
+  OccupancyGridEigen = checkEmMarkEm(OccupancyGridEigen,subGridRadius);
 
   Eigen::MatrixX4i land_points;
   LandingCommander::splitncheck(OccupancyGridEigen, robotPoseIndex, res, minimumLandingArea, land_points);
@@ -117,7 +110,7 @@ bool LandingCommander::splitncheck(const Eigen::MatrixXi& mapdata, Eigen::Array2
           }
         }
       }
-      Eigen::MatrixX4i temp;
+      Eigen::Matrix<int,1,4> temp;
       for (int i=0;i<solutions;i++){
         for (int j=i+1;j<solutions;j++){
           if (land_waypoints(i,2)>land_waypoints(j,2)){
@@ -146,16 +139,18 @@ bool LandingCommander::toMatrix(const nav_msgs::OccupancyGrid& occupancyGrid, Ei
   int height = occupancyGrid.info.height;
   gridEigen.resize(width,height);
   for (std::vector<int8_t>::const_iterator iterator = occupancyGrid.data.begin(); iterator != occupancyGrid.data.end(); ++iterator) {
+    int k = 0;
     for (int i=0; i<width; i++){
       for (int j=0; j<height; j++){
-        gridEigen(i,j)=*iterator;
+        gridEigen(i,j)=occupancyGrid.data[k];
+        k++;
       }
     }
   }
   return true;
 }
 
-bool LandingCommander::toOccupancyGrid(const Eigen::MatrixXi& gridEigen, nav_msgs::OccupancyGrid& occupancyGrid, nav_msgs::OccupancyGrid initialOccupancyGrid){
+bool LandingCommander::toOccupancyGrid(const Eigen::MatrixXi& gridEigen, nav_msgs::OccupancyGrid& occupancyGrid, const nav_msgs::OccupancyGrid& initialOccupancyGrid){
   int width = gridEigen.rows();
   int height = gridEigen.cols();
   int size = width*height;
@@ -173,6 +168,55 @@ bool LandingCommander::toOccupancyGrid(const Eigen::MatrixXi& gridEigen, nav_msg
     }
   }
     return true;
+}
+
+int LandingCommander::checkNeighborsRadius (const double& safeAreaRadius, const double& resolution){
+  int gridNumRadius;
+  gridNumRadius = safeAreaRadius/resolution;
+  return gridNumRadius;
+}
+
+bool LandingCommander::isIn (Eigen::MatrixX2i& matrix, const Eigen::Array2i Index){
+  bool isIn;
+  for (int i=0;i<matrix.rows();i++){
+    if (matrix(i,0)==Index(0) && matrix(i,1)==Index(1)){
+      isIn = true;
+    }else{
+      isIn = false;
+    }
+  }
+  return isIn;
+}
+
+Eigen::MatrixXi LandingCommander::checkEmMarkEm(Eigen::MatrixXi& matrix, int& radius){
+  Eigen::MatrixX2i checked;
+  int checkedSize = 0;
+  for (int i=0;i<matrix.rows();i++){
+    for (int j=0;j<matrix.cols();j++){
+      if (matrix(i,j)==100){
+        int subIndex_x, subIndex_y;
+        int maxSubIndex_x = i+radius;
+        int maxSubIndex_y = j+radius;
+        if (i-radius<0){subIndex_x=0;}
+        else{subIndex_x = i-radius;}
+        if (j-radius<0){subIndex_y=0;}
+        else{subIndex_y = j-radius;}
+        for (int k=subIndex_x;k<maxSubIndex_x||k<matrix.rows();k++){
+          for (int l=subIndex_y;l<maxSubIndex_y||l<matrix.cols();l++){
+            Eigen::Array2i Index; Index = k,l;
+            if (!isIn(checked, Index)){
+              checkedSize++;
+              checked.resize(checkedSize,2);
+              checked((checkedSize-1),0)=k;
+              checked((checkedSize-1),1)=l;
+              matrix(k,l)=100;
+            }
+          }
+        }
+      }
+    }
+  }
+  return matrix;
 }
 
 }

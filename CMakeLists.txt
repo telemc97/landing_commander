@@ -12,6 +12,8 @@ set(PACKAGE_DEPENDENCIES
   grid_map_ros
   grid_map_msgs
   eigen_conversions
+  mavros
+  mavros_msgs
 )
 
 
