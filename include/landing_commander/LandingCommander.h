@@ -32,11 +32,26 @@ class LandingCommander{
   protected:
 
   bool toMatrix(const nav_msgs::OccupancyGrid& occupancyGrid, Eigen::MatrixXi& gridEigen);
+  
   bool toOccupancyGrid(const Eigen::MatrixXi& gridEigen, nav_msgs::OccupancyGrid& occupancyGrid, const nav_msgs::OccupancyGrid& initialOccupancyGrid);
 
   bool splitncheck(const Eigen::MatrixXi& mapdata, Eigen::Array2i& robotIndex, double resolution, double minLandA, Eigen::MatrixX4i& land_waypoints, int offset_w = 0, int offest_h = 0);
-  bool isIn(Eigen::MatrixX2i& matrix, const Eigen::Array2i Index);
+  
+  bool isIn(Eigen::MatrixX2i& matrix, const int& x, const int& y){
+    bool isIn;
+    for (int i=0;i<matrix.rows();i++){
+      if (matrix(i,0)==x && matrix(i,1)==y){
+        isIn = true;
+      }else{
+        isIn = false;
+      }
+    }
+    return isIn;
+  }
+
   Eigen::MatrixXi checkEmMarkEm(Eigen::MatrixXi& matrix, int& radius);
+
+  Eigen::Array2i getIndexFromLinearIndex(int& height, int& width, int& Index);
 
   int checkNeighborsRadius (const double& safeAreaRadius, const double& resolution);
 

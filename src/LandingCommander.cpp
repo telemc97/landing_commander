@@ -1,6 +1,5 @@
 #include <landing_commander/LandingCommander.h>
 
-using namespace grid_map;
 namespace landing_commander{
 
 LandingCommander::LandingCommander(const ros::NodeHandle &nh_)
@@ -8,7 +7,7 @@ LandingCommander::LandingCommander(const ros::NodeHandle &nh_)
   gridMapSub(NULL),
   tfgridMapSub(NULL),
   baseFrameId("base_link"),
-  safetyRadius(5.0),
+  safetyRadius(2.0),
   latchedTopics(true),
   minimumLandingArea(3.0)
   {
@@ -58,6 +57,7 @@ void LandingCommander::gridHandler(const nav_msgs::OccupancyGrid::ConstPtr& grid
   toOccupancyGrid(OccupancyGridEigen, gridMapOutput, *gridMap);
   occupancySub.publish(gridMapOutput);
 }
+
 
 bool LandingCommander::splitncheck(const Eigen::MatrixXi& mapdata, Eigen::Array2i& robotIndex, double resolution, double minLandA, Eigen::MatrixX4i& land_waypoints, int offset_w, int offset_h){
   int rows = mapdata.rows();
@@ -134,41 +134,37 @@ bool LandingCommander::splitncheck(const Eigen::MatrixXi& mapdata, Eigen::Array2
   return true;
 }
 
+
 bool LandingCommander::toMatrix(const nav_msgs::OccupancyGrid& occupancyGrid, Eigen::MatrixXi& gridEigen){
-  int width = occupancyGrid.info.width;
-  int height = occupancyGrid.info.height;
-  gridEigen.resize(width,height);
-  for (std::vector<int8_t>::const_iterator iterator = occupancyGrid.data.begin(); iterator != occupancyGrid.data.end(); ++iterator) {
-    int k = 0;
-    for (int i=0; i<width; i++){
-      for (int j=0; j<height; j++){
-        gridEigen(i,j)=occupancyGrid.data[k];
-        k++;
-      }
-    }
-  }
+  int height_ = occupancyGrid.info.height;
+  int width_ = occupancyGrid.info.width;
+  gridEigen.resize(height_,width_);
+  // for (int i=0;i<occupancyGrid.data.size();i++) {
+  //   Eigen::Array2i IndexXY; 
+  //   IndexXY = getIndexFromLinearIndex(height_, width_, i);
+  //   gridEigen(IndexXY(0),IndexXY(1))=occupancyGrid.data[i];
+  // }
+  for (std::vector<int8_t>::const_iterator it = occupancyGrid.data.cbegin(); it!=occupancyGrid.data.cend(); it++)
   return true;
 }
 
+
 bool LandingCommander::toOccupancyGrid(const Eigen::MatrixXi& gridEigen, nav_msgs::OccupancyGrid& occupancyGrid, const nav_msgs::OccupancyGrid& initialOccupancyGrid){
-  int width = gridEigen.rows();
-  int height = gridEigen.cols();
-  int size = width*height;
-  if (initialOccupancyGrid.info.height != height && initialOccupancyGrid.info.width != width){
-    ROS_WARN("shit went wrong");
-  }
-  occupancyGrid.info = initialOccupancyGrid.info;
-  occupancyGrid.header = initialOccupancyGrid.header;
+  int size = gridEigen.cols()*gridEigen.rows();
   occupancyGrid.data.resize(size);
-  int k = 0;
-  for (int i=0; i<width; i++){
-    for (int j=0; j<height; j++){
-      occupancyGrid.data[k] = gridEigen(i,j);
+  int k=0;
+  for (int i=0; i<gridEigen.rows(); i++){
+    for (int j=0; j<gridEigen.cols(); j++){
+      occupancyGrid.data[k]=gridEigen(i,j);
       k++;
     }
   }
-    return true;
+  occupancyGrid.info = initialOccupancyGrid.info;
+  occupancyGrid.header = initialOccupancyGrid.header;
+
+  return true;
 }
+
 
 int LandingCommander::checkNeighborsRadius (const double& safeAreaRadius, const double& resolution){
   int gridNumRadius;
@@ -176,47 +172,42 @@ int LandingCommander::checkNeighborsRadius (const double& safeAreaRadius, const 
   return gridNumRadius;
 }
 
-bool LandingCommander::isIn (Eigen::MatrixX2i& matrix, const Eigen::Array2i Index){
-  bool isIn;
-  for (int i=0;i<matrix.rows();i++){
-    if (matrix(i,0)==Index(0) && matrix(i,1)==Index(1)){
-      isIn = true;
-    }else{
-      isIn = false;
-    }
-  }
-  return isIn;
-}
 
 Eigen::MatrixXi LandingCommander::checkEmMarkEm(Eigen::MatrixXi& matrix, int& radius){
-  Eigen::MatrixX2i checked;
+  Eigen::MatrixXi newMatrix;
+  newMatrix.resize(matrix.rows(),matrix.cols());
   int checkedSize = 0;
   for (int i=0;i<matrix.rows();i++){
     for (int j=0;j<matrix.cols();j++){
       if (matrix(i,j)==100){
         int subIndex_x, subIndex_y;
-        int maxSubIndex_x = i+radius;
-        int maxSubIndex_y = j+radius;
+        int maxSubIndex_x,maxSubIndex_y;
         if (i-radius<0){subIndex_x=0;}
         else{subIndex_x = i-radius;}
         if (j-radius<0){subIndex_y=0;}
         else{subIndex_y = j-radius;}
-        for (int k=subIndex_x;k<maxSubIndex_x||k<matrix.rows();k++){
-          for (int l=subIndex_y;l<maxSubIndex_y||l<matrix.cols();l++){
-            Eigen::Array2i Index; Index = k,l;
-            if (!isIn(checked, Index)){
-              checkedSize++;
-              checked.resize(checkedSize,2);
-              checked((checkedSize-1),0)=k;
-              checked((checkedSize-1),1)=l;
-              matrix(k,l)=100;
-            }
+        if (i+radius>matrix.rows()){maxSubIndex_x=matrix.rows();}
+        else{maxSubIndex_x = i+radius;}
+        if (j+radius>matrix.cols()){maxSubIndex_y=matrix.cols();}
+        else{maxSubIndex_y = j+radius;}
+        for (int k=subIndex_x;k<maxSubIndex_x;k++){
+          for (int l=subIndex_y;l<maxSubIndex_y;l++){
+            newMatrix(k,l)=100;
           }
         }
       }
     }
   }
-  return matrix;
+  return newMatrix;
+}
+
+
+Eigen::Array2i LandingCommander::getIndexFromLinearIndex(int& height, int& width, int& Index){
+  Eigen::Array2i IndexXY;
+  int x = Index/width;
+  int y = Index-(x*width);
+  IndexXY(0) = x; IndexXY(1) = y;
+  return IndexXY;
 }
 
 }
