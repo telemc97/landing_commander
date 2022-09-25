@@ -33,9 +33,9 @@ class LandingCommander{
 
   bool toMatrix(const nav_msgs::OccupancyGrid& occupancyGrid, Eigen::MatrixXi& gridEigen);
   
-  bool toOccupancyGrid(const Eigen::MatrixXi& gridEigen, nav_msgs::OccupancyGrid& occupancyGrid, const nav_msgs::OccupancyGrid& initialOccupancyGrid);
+  bool toOccupancyGrid(const Eigen::MatrixXi& gridEigen, nav_msgs::OccupancyGrid& occupancyGrid, const nav_msgs::MapMetaData& mapMetaData, const std_msgs::Header& header);
 
-  bool splitncheck(const Eigen::MatrixXi& mapdata, Eigen::Array2i& robotIndex, double resolution, double minLandA, Eigen::MatrixX4i& land_waypoints, int offset_w = 0, int offest_h = 0);
+  bool splitncheck(const Eigen::MatrixXi& mapdata, Eigen::Array2i& robotIndex, double resolution, double minLandA, Eigen::MatrixX4i& land_waypoints, bool& land2base, int offset_w = 0, int offest_h = 0);
   
   bool isIn(Eigen::MatrixX2i& matrix, const int& x, const int& y){
     bool isIn;
@@ -49,15 +49,33 @@ class LandingCommander{
     return isIn;
   }
 
-  Eigen::MatrixXi checkEmMarkEm(Eigen::MatrixXi& matrix, int& radius);
+  Eigen::MatrixXi checkEmMarkEm(const Eigen::MatrixXi& matrix, int& radius);
 
-  Eigen::Array2i getIndexFromLinearIndex(int& height, int& width, int& Index);
+  Eigen::MatrixXi Debug( Eigen::MatrixXi& matrix, Eigen::MatrixX4i& land_waypoints);
+
+  Eigen::Array2i getIndexFromLinearIndex(int& rows, int& Index){
+    Eigen::Array2i IndexXY;
+    int y = Index/rows;
+    int x = Index-(y*rows);
+    IndexXY(0) = x; IndexXY(1) = y;
+    return IndexXY;
+  }
+
+  int getLinearIndexFromIndex(int height, int width, Eigen::Array2i& Array){
+    int LinearIndex;
+    int x = Array(0);
+    int y = Array(1);
+    LinearIndex = x*height + y;
+    return LinearIndex;
+  }
 
   int checkNeighborsRadius (const double& safeAreaRadius, const double& resolution);
 
   void state_cb(const mavros_msgs::State::ConstPtr& msg){
     current_state = *msg;
   }
+
+  void handleLand(const Eigen::MatrixX4i& land_waypoints);
 
   inline int maxDivider(int number){
     int divider;
@@ -81,16 +99,26 @@ class LandingCommander{
 
   ros::NodeHandle nodeHandle;
   message_filters::Subscriber<nav_msgs::OccupancyGrid>* gridMapSub;
+  message_filters::Subscriber<geometry_msgs::PoseStamped>* postitionSub;
+  
+  Eigen::MatrixX4i* land_points;
+
   tf::MessageFilter<nav_msgs::OccupancyGrid>* tfgridMapSub;
-  ros::Publisher occupancySub;
+  ros::Publisher occupancyPub;
   ros::Publisher pos_setpoint;
   ros::Subscriber mavros_state;
+  ros::ServiceClient arming_client;
+  ros::ServiceClient set_mode_client;
   Eigen::MatrixXi OccupancyGridEigen;
   nav_msgs::OccupancyGrid gridMapOutput;
+
   double minimumLandingArea;
 
   double safetyRadius;
 
   bool latchedTopics;
+  bool land2base;
+  bool debug;
+  bool publishOccupancy;
 };
 }
