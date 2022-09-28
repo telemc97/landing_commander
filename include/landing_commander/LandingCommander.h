@@ -1,9 +1,14 @@
 #include <ros/ros.h>
+#include <string>
 #include <grid_map_ros/GridMapRosConverter.hpp>
 
 #include <tf/transform_listener.h>
 #include <tf/message_filter.h>
 #include <message_filters/subscriber.h>
+#include <message_filters/time_synchronizer.h>
+#include <message_filters/synchronizer.h>
+#include <message_filters/sync_policies/approximate_time.h>
+
 #include <eigen_conversions/eigen_msg.h>
 
 #include <geometry_msgs/PointStamped.h>
@@ -13,6 +18,8 @@
 #include <mavros_msgs/CommandBool.h>
 #include <mavros_msgs/SetMode.h>
 #include <mavros_msgs/State.h>
+#include <mavros_msgs/ExtendedState.h>
+
 
 #include <nav_msgs/OccupancyGrid.h>
 #include <grid_map_core/GridMap.hpp>
@@ -22,12 +29,13 @@ namespace landing_commander{
 class LandingCommander{
 
   public:
+
+  typedef message_filters::sync_policies::ApproximateTime<nav_msgs::OccupancyGrid, mavros_msgs::State, mavros_msgs::ExtendedState> MySyncPolicy;
   
   LandingCommander(const ros::NodeHandle &nh_ = ros::NodeHandle()); //constructor
   virtual ~LandingCommander(); //destructor
 
-  void gridHandler(const nav_msgs::OccupancyGrid::ConstPtr& gridMap);
-
+  void mainCallback(const nav_msgs::OccupancyGrid::ConstPtr& gridMap, const mavros_msgs::State::ConstPtr& state, const mavros_msgs::ExtendedState::ConstPtr& extendedState);
 
   protected:
 
@@ -69,13 +77,13 @@ class LandingCommander{
     return LinearIndex;
   }
 
-  int checkNeighborsRadius (const double& safeAreaRadius, const double& resolution);
+  int checkNeighborsRadius(const double& safeAreaRadius, const double& resolution);
 
   void state_cb(const mavros_msgs::State::ConstPtr& msg){
     current_state = *msg;
   }
 
-  void handleLand(const Eigen::MatrixX4i& land_waypoints);
+  void handleWaypoint(const ros::TimerEvent&);
 
   inline int maxDivider(int number){
     int divider;
@@ -92,6 +100,16 @@ class LandingCommander{
     return divider;
   }
 
+  bool waypointReached(const Eigen::Array2i& robot_pose, const Eigen::MatrixX4i& land_waypoint){
+    bool waypointReached;
+    if (robot_pose(0)==land_waypoint(0,0)&&robot_pose(1)==land_waypoint(0,1)){
+      waypointReached=true;
+    }else{
+      waypointReached=false;
+    }
+    return waypointReached;
+  }
+
   mavros_msgs::State current_state;
   tf::TransformListener tfListener;
 
@@ -100,25 +118,35 @@ class LandingCommander{
   ros::NodeHandle nodeHandle;
   message_filters::Subscriber<nav_msgs::OccupancyGrid>* gridMapSub;
   message_filters::Subscriber<geometry_msgs::PoseStamped>* postitionSub;
-  
-  Eigen::MatrixX4i* land_points;
+  message_filters::Subscriber<mavros_msgs::State>* fcuStateSub;
+  message_filters::Subscriber<mavros_msgs::ExtendedState>* fcuExtendedStateSub;
+
+  Eigen::MatrixX4i land_points;
 
   tf::MessageFilter<nav_msgs::OccupancyGrid>* tfgridMapSub;
+  message_filters::Synchronizer<MySyncPolicy>* sync;
+  
+
   ros::Publisher occupancyPub;
   ros::Publisher pos_setpoint;
-  ros::Subscriber mavros_state;
+  ros::Timer landingHandler;
+  nav_msgs::OccupancyGrid gridMapOutput;
+  Eigen::Array2i robotPose;
+
   ros::ServiceClient arming_client;
   ros::ServiceClient set_mode_client;
-  Eigen::MatrixXi OccupancyGridEigen;
-  nav_msgs::OccupancyGrid gridMapOutput;
+
 
   double minimumLandingArea;
-
+  int landState;
+  bool armed;
+  std::string mode;
   double safetyRadius;
 
   bool latchedTopics;
   bool land2base;
   bool debug;
   bool publishOccupancy;
+  bool safetyArea;
 };
 }

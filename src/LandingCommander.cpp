@@ -6,13 +6,16 @@ LandingCommander::LandingCommander(const ros::NodeHandle &nh_)
 : nodeHandle(nh_),
   gridMapSub(NULL),
   tfgridMapSub(NULL),
-  land_points(NULL),
+  fcuStateSub(NULL),
+  fcuExtendedStateSub(NULL),
+  sync(NULL),
   baseFrameId("base_link"),
   safetyRadius(2.0),
   latchedTopics(true),
   minimumLandingArea(3.0),
   land2base(false),
-  debug(false),
+  safetyArea(true),
+  debug(true),
   publishOccupancy(true)
   {
     nodeHandle.param("safety_dist", safetyRadius, safetyRadius);
@@ -21,17 +24,29 @@ LandingCommander::LandingCommander(const ros::NodeHandle &nh_)
     nodeHandle.param("land_to_base", land2base, land2base);
     nodeHandle.param("debug",debug,debug);
     nodeHandle.param("show_occupancy_map", publishOccupancy,publishOccupancy);
+    nodeHandle.param("mark_safety_area",safetyArea, safetyArea);
 
     occupancyPub = nodeHandle.advertise<nav_msgs::OccupancyGrid>("occupancy_output", 5, latchedTopics);
     pos_setpoint = nodeHandle.advertise<geometry_msgs::PoseStamped>("mavros/setpoint_position/local", 10);
 
+    landingHandler = nodeHandle.createTimer(ros::Duration(0.3), &LandingCommander::handleWaypoint, this);
+
     set_mode_client = nodeHandle.serviceClient<mavros_msgs::SetMode>("mavros/set_mode");
+
+
 
     gridMapSub = new message_filters::Subscriber<nav_msgs::OccupancyGrid>(nodeHandle, "/projected_map", 10);
     tfgridMapSub = new tf::MessageFilter<nav_msgs::OccupancyGrid>(*gridMapSub, tfListener, baseFrameId, 10);
-    tfgridMapSub->registerCallback(boost::bind(&LandingCommander::gridHandler, this, boost::placeholders::_1));
+    fcuStateSub = new message_filters::Subscriber<mavros_msgs::State>(nodeHandle, "/mavros/state", 10);
+    fcuExtendedStateSub = new message_filters::Subscriber<mavros_msgs::ExtendedState>(nodeHandle, "/mavros/extended_state", 10);
 
-    land_points = new Eigen::MatrixX4i(0,4);
+    sync = new message_filters::Synchronizer<MySyncPolicy>(MySyncPolicy(10), *tfgridMapSub, *fcuStateSub, *fcuExtendedStateSub);
+
+    sync->registerCallback(boost::bind(&LandingCommander::mainCallback, this, boost::placeholders::_1, boost::placeholders::_2, boost::placeholders::_3));
+    
+    // tfgridMapSub->registerCallback(boost::bind(&LandingCommander::mainCallback, this, boost::placeholders::_1));
+
+    // land_points = new Eigen::MatrixX4i(1,4);
   }
 
 LandingCommander::~LandingCommander(){
@@ -43,33 +58,34 @@ LandingCommander::~LandingCommander(){
     delete tfgridMapSub;
     tfgridMapSub = NULL;
   }
-  
-  if (land_points){
-    delete land_points;
-    land_points = NULL;
-  }
+  // if (land_points){
+  //   delete land_points;
+  //   land_points = NULL;
+  // }
 }
 
 
-void LandingCommander::gridHandler(const nav_msgs::OccupancyGrid::ConstPtr& gridMap){
+void LandingCommander::mainCallback(const nav_msgs::OccupancyGrid::ConstPtr& gridMap, const mavros_msgs::State::ConstPtr& state, const mavros_msgs::ExtendedState::ConstPtr& extendedState){
+  Eigen::MatrixXi OccupancyGridEigen;
 
   tf::StampedTransform worldToSensorTf;
   tfListener.lookupTransform(gridMap->header.frame_id, baseFrameId, gridMap->header.stamp, worldToSensorTf);
   tf::Point robotOriginTf = worldToSensorTf.getOrigin();
-  Eigen::Array2i robotPose;
-  robotPose(0) = robotOriginTf.x();
-  robotPose(1) = robotOriginTf.y();
-
+  robotPose(0) = robotOriginTf.x(); robotPose(1) = robotOriginTf.y();
+  
   toMatrix(*gridMap, OccupancyGridEigen);
   double res = gridMap->info.resolution;
   int subGridRadius = checkNeighborsRadius(safetyRadius, res);
-  OccupancyGridEigen = checkEmMarkEm(OccupancyGridEigen,subGridRadius);
 
-  LandingCommander::splitncheck(OccupancyGridEigen, robotPose, res, minimumLandingArea, *land_points, land2base);
+  if (safetyArea){
+    OccupancyGridEigen = checkEmMarkEm(OccupancyGridEigen,subGridRadius);
+  }
+
+  LandingCommander::splitncheck(OccupancyGridEigen, robotPose, res, minimumLandingArea, land_points, land2base);
 
   if (debug){ 
     ROS_WARN("Robot Position X: %i, Y: %i", robotPose(0), robotPose(1));
-    OccupancyGridEigen = Debug(OccupancyGridEigen, *land_points);
+    OccupancyGridEigen = Debug(OccupancyGridEigen, land_points);
   }
 
   if (publishOccupancy){
@@ -77,10 +93,15 @@ void LandingCommander::gridHandler(const nav_msgs::OccupancyGrid::ConstPtr& grid
     occupancyPub.publish(gridMapOutput);
   }
 
+  landState = extendedState->landed_state;
+  armed = state->armed;
+  mode = state->mode;
+  
 }
 
 
 bool LandingCommander::splitncheck(const Eigen::MatrixXi& matrix, Eigen::Array2i& robotIndex, double resolution, double minLandA, Eigen::MatrixX4i& land_waypoints, bool& land2base, int offset_w, int offset_h){
+  
   int rows = matrix.rows();
   int cols = matrix.cols();
   int w_div = LandingCommander::maxDivider(rows);
@@ -219,9 +240,9 @@ Eigen::MatrixXi LandingCommander::checkEmMarkEm(const Eigen::MatrixXi& matrix, i
         else{subIndex_x = i-radius;}
         if (j-radius<0){subIndex_y=0;}
         else{subIndex_y = j-radius;}
-        if (i+radius>matrix.rows()){maxSubIndex_x=matrix.rows()-1;}
+        if (i+radius>matrix.rows()){maxSubIndex_x=matrix.rows();}
         else{maxSubIndex_x = i+radius;}
-        if (j+radius>matrix.cols()){maxSubIndex_y=matrix.cols()-1;}
+        if (j+radius>matrix.cols()){maxSubIndex_y=matrix.cols();}
         else{maxSubIndex_y = j+radius;}
         for (int k=subIndex_x;k<maxSubIndex_x;k++){
           for (int l=subIndex_y;l<maxSubIndex_y;l++){
@@ -249,26 +270,46 @@ Eigen::MatrixXi LandingCommander::Debug( Eigen::MatrixXi& matrix, Eigen::MatrixX
   return matrix;
 }
 
-void LandingCommander::handleLand(const Eigen::MatrixX4i& land_waypoints){
+void LandingCommander::handleWaypoint(const ros::TimerEvent&){
 
-  // ros::Rate rate(20.0);
-  geometry_msgs::PoseStamped pose;
-  pose.pose.position.x = land_waypoints(0,0);
-  pose.pose.position.y = land_waypoints(0,1);
-  pose.pose.position.z = 2;
-  
-  for(int i = 100; ros::ok() && i > 0; --i){
+  while (land_points.rows()>0){
+    bool landing;
+    bool position;
+    
+    geometry_msgs::PoseStamped pose;
+
+    pose.pose.position.x = land_points(0,0);
+    pose.pose.position.y = land_points(0,1);
+    pose.pose.position.z = 10;
+    
+    for(int i = 20; ros::ok() && i > 0; --i){
+      pos_setpoint.publish(pose);
+    }
+
+    ros::Time last_request = ros::Time::now();
+
     pos_setpoint.publish(pose);
-    ros::spinOnce();
-    // rate.sleep();
+
+    mavros_msgs::SetMode land_set_mode;
+    mavros_msgs::SetMode position_set_mode;
+
+    land_set_mode.request.custom_mode = "AUTO.LAND";
+    position_set_mode.request.custom_mode = "POSCTL";
+
+    if (waypointReached(robotPose, land_points) && mode=="OFFBOARD" && landState!=1){
+      if( set_mode_client.call(land_set_mode) && land_set_mode.response.mode_sent){
+        ROS_INFO("Land mode enabled");
+        landing = true;
+      }
+    }
+    if (landState==1 && armed && mode!="POSCTL"){
+      if( set_mode_client.call(position_set_mode) && position_set_mode.response.mode_sent){
+        ROS_INFO("Switched back to position mode");
+        position = true;
+      }
+    }
   }
 
-  ros::Time last_request = ros::Time::now();
-
-  pos_setpoint.publish(pose);
-
-  // ros::spinOnce();
-  // rate.sleep();
 }
 
 

@@ -14,6 +14,7 @@ set(PACKAGE_DEPENDENCIES
   eigen_conversions
   mavros
   mavros_msgs
+  message_filters
 )
 
 
