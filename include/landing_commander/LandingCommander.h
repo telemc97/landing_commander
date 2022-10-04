@@ -1,5 +1,6 @@
 #include <ros/ros.h>
 #include <string>
+#include <chrono>
 #include <grid_map_ros/GridMapRosConverter.hpp>
 
 #include <tf/transform_listener.h>
@@ -39,12 +40,14 @@ class LandingCommander{
 
   protected:
 
-  bool toMatrix(const nav_msgs::OccupancyGrid& occupancyGrid, Eigen::MatrixXi& gridEigen);
+  bool toMatrix(const nav_msgs::OccupancyGrid& occupancyGrid, Eigen::MatrixXi& matrix);
   
-  bool toOccupancyGrid(const Eigen::MatrixXi& gridEigen, nav_msgs::OccupancyGrid& occupancyGrid, const nav_msgs::MapMetaData& mapMetaData, const std_msgs::Header& header);
+  bool toOccupancyGrid(const Eigen::MatrixXi& matrix, nav_msgs::OccupancyGrid& occupancyGrid, const nav_msgs::MapMetaData& mapMetaData, const std_msgs::Header& header);
 
-  bool splitncheck(const Eigen::MatrixXi& mapdata, Eigen::Array2i& robotIndex, double resolution, double minLandA, Eigen::MatrixX4i& land_waypoints, bool& land2base, int offset_w = 0, int offest_h = 0);
+  bool splitncheckExpirimental(const Eigen::MatrixXi& matrix, Eigen::Array2i& robotIndex, double resolution, double minLandA, Eigen::MatrixX4i& land_waypoints, bool& land2base, int offset_w = 0, int offest_h = 0);
   
+  void splincheckStride(const Eigen::MatrixXi& matrix, Eigen::MatrixX4i& land_waypoints, const int& stride, const Eigen::Array2i& robotIndex, const int& safetyRadius);
+
   bool isIn(Eigen::MatrixX2i& matrix, const int& x, const int& y){
     bool isIn;
     for (int i=0;i<matrix.rows();i++){
@@ -57,9 +60,35 @@ class LandingCommander{
     return isIn;
   }
 
-  Eigen::MatrixXi checkEmMarkEm(const Eigen::MatrixXi& matrix, int& radius);
+  void checkEmMarkEm(Eigen::MatrixXi& matrix, int& radius);
 
-  Eigen::MatrixXi Debug( Eigen::MatrixXi& matrix, Eigen::MatrixX4i& land_waypoints);
+  void Debug( Eigen::MatrixXi& matrix, const Eigen::MatrixX4i& land_waypoints);
+
+  bool checkArea(Eigen::MatrixXi& matrix){
+    bool occupied_ = false;
+    for (int i=0;i<matrix.rows();i++){
+      for (int j=0;j<matrix.cols();j++){
+        if (matrix(i,j)==100){
+          occupied_ = true;
+        }
+      }
+    }
+    return occupied_;
+  }
+  
+  Eigen::MatrixX4i sortDescOrder (Eigen::MatrixX4i& land_waypoints, const int& col){
+    Eigen::Matrix<int,1,4> temp;
+    for (int i=0;i<land_waypoints.rows();i++){
+      for (int j=i+1;j<land_waypoints.rows();j++){
+        if (land_waypoints(i,col)>land_waypoints(j,col)){
+          temp = land_waypoints.block(i,0,1,4);
+          land_waypoints.block(i,0,1,4) = land_waypoints.block(j,0,1,4);
+          land_waypoints.block(j,0,1,4) = temp;
+        }
+      }
+    }
+    return land_waypoints;
+  }
 
   Eigen::Array2i getIndexFromLinearIndex(int& rows, int& Index){
     Eigen::Array2i IndexXY;
@@ -77,32 +106,42 @@ class LandingCommander{
     return LinearIndex;
   }
 
-  int checkNeighborsRadius(const double& safeAreaRadius, const double& resolution);
-
   void state_cb(const mavros_msgs::State::ConstPtr& msg){
     current_state = *msg;
   }
 
   void handleWaypoint(const ros::TimerEvent&);
 
+  int metersToGrids(const double& meters, const double& res){
+    int grids;
+    grids = meters/res;
+    if (grids<1){grids=1;}
+    return grids;
+  }
+
+  double gridsToMeters(const int& grids, const double& res){
+    double meters;
+    meters = grids*res;
+    return meters;
+  }
+
   inline int maxDivider(int number){
     int divider;
-    for (int i=2; i<number; i++){
+    for (int i=2; i<number+1; i++){
       if (number%i==0){
         divider = i;
         break;
       }
-      if (divider == number){
-        divider = 1;
-        break;
-      }
+    }
+    if (divider == number){
+      divider = 1;
     }
     return divider;
   }
 
-  bool waypointReached(const Eigen::Array2i& robot_pose, const Eigen::MatrixX4i& land_waypoint){
+  bool waypointReached(const Eigen::Array2i& robot_pose, const Eigen::Array2i& land_target_){
     bool waypointReached;
-    if (robot_pose(0)==land_waypoint(0,0)&&robot_pose(1)==land_waypoint(0,1)){
+    if (robot_pose(0)==land_target_(0)&&robot_pose(1)==land_target_(1)){
       waypointReached=true;
     }else{
       waypointReached=false;
@@ -131,14 +170,15 @@ class LandingCommander{
   ros::Publisher pos_setpoint;
   ros::Timer landingHandler;
   nav_msgs::OccupancyGrid gridMapOutput;
+  Eigen::MatrixXi OccupancyGridEigen;
   Eigen::Array2i robotPose;
 
   ros::ServiceClient arming_client;
   ros::ServiceClient set_mode_client;
 
 
-  double minimumLandingArea;
   int landState;
+  int stride;
   bool armed;
   std::string mode;
   double safetyRadius;
@@ -148,5 +188,6 @@ class LandingCommander{
   bool debug;
   bool publishOccupancy;
   bool safetyArea;
+  bool haveOccupancyGridEigen;
 };
 }
