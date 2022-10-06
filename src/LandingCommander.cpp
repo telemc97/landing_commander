@@ -203,7 +203,7 @@ void LandingCommander::checkEmMarkEm(Eigen::MatrixXi& matrix, const int& radius)
       }
     }
   }
-  matrix = newMatrix.block(radius,radius,matrix.cols(),matrix.rows());
+  matrix = newMatrix.block(radius,radius,matrix.rows(),matrix.cols());
   auto stop = std::chrono::high_resolution_clock::now();
   auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(stop - start);
   if (debug){ROS_WARN("checkEmMarkEm function executred in %i", duration);}
