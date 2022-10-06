@@ -10,7 +10,7 @@ LandingCommander::LandingCommander(const ros::NodeHandle &nh_)
   fcuExtendedStateSub(NULL),
   sync(NULL),
   baseFrameId("base_link"),
-  safetyRadius(1.0),
+  safetyRadius(2.0),
   stride(3),
   OccupancyGridEigen(0,0),
   latchedTopics(true),
@@ -149,106 +149,6 @@ void LandingCommander::splincheckStride(const Eigen::MatrixXi& matrix, Eigen::Ma
 }
 
 
-// bool LandingCommander::splitncheckExpirimental(const Eigen::MatrixXi& matrix, Eigen::Array2i& robotIndex, double resolution, double minLandA, Eigen::MatrixX4i& land_waypoints, bool& land2base, int offset_w, int offset_h){
-//   int solutions = 0;
-//   int rows = matrix.rows();
-//   int cols = matrix.cols();
-//   int w_div = LandingCommander::maxDivider(rows);
-//   int h_div = LandingCommander::maxDivider(cols);
-//   int sub_w = rows/w_div;
-//   int sub_h = cols/h_div;
-
-//   if ((gridsToMeters(sub_w, resolution)>minLandA) && (gridsToMeters(sub_h, resolution)>minLandA)){
-
-//     //calculating occupied grids in each subgrid and getting its "score"
-//     Eigen::MatrixXi score(w_div,h_div);
-//     for (int i=0; i<w_div; i++){
-//       for (int j=0; j<h_div; j++){
-//         int occ_cells = 0;
-//         for (int it_rows=0; it_rows<sub_w; it_rows++){
-//           for (int it_cols=0; it_cols<sub_h; it_cols++){
-//             if (matrix(it_rows, it_cols)==100){
-//               occ_cells++;
-//             }
-//           }
-//         }
-//         score(i,j) = occ_cells;    OccupancyGridEigen = Debug(OccupancyGridEigen, land_points);
-
-//       }
-//     }
-
-//     //getting the best score of subgrids
-//     int best = score(0,0);
-//     for (int i=0; i<w_div;i++){
-//       for (int j=0;j<h_div;j++){
-//         if (score(i,j)<best){
-//           best = score(i,j);
-//         }
-//         if (score(i,j)==0){solutions++;}
-//       }
-//     }
-
-//     //Actions if there is a subgrid with apparent solution
-//     if (solutions>0){
-//       land_waypoints.resize(solutions,4);
-//       int i=0;
-//       for (int j=0;j<w_div;j++){
-//         for (int k=0;k<h_div;k++){
-//           if (score(j,k)==0){
-//             int centroid_w = (sub_w/2)+(sub_w*j)+offset_w;
-//             int centroid_h = (sub_h/2)+(sub_h*k)+offset_h;
-//             int dist2robot = std::sqrt(std::pow((robotIndex(0)-centroid_w), 2)+std::pow((robotIndex(1)-centroid_h), 2));
-//             int dist2base = std::sqrt(std::pow(-centroid_w, 2)+std::pow(-centroid_h,2));
-//             land_waypoints(i,0) = centroid_w;
-//             land_waypoints(i,1) = centroid_h;
-//             land_waypoints(i,2) = dist2robot;
-//             land_waypoints(i,3) = dist2base;
-//             i++;
-//           }
-//         }
-//       }
-//     }else{
-//       for(int i=0;i<w_div;i++){
-//         for(int j=0;j<h_div;j++){
-//           if (score(i,j)==best){
-//             Eigen::MatrixXi new_submap = matrix.block((sub_w*i)+offset_w, (sub_h*j)+offset_h, sub_w, sub_h);
-//             int new_offset_w = (sub_w*i)+offset_w;
-//             int new_offset_h = (sub_h*j)+offset_h;
-//             LandingCommander::splitncheckExpirimental(new_submap, robotIndex, resolution, minLandA, land_waypoints, land2base, new_offset_w, new_offset_h);
-//           }
-//         }
-//       }
-//     }
-//   }
-//   if (solutions>0){
-//     //sort land-waypoints by selected distance
-//     Eigen::Matrix<int,1,4> temp;
-//     if (land2base){
-//       for (int i=0;i<solutions;i++){
-//         for (int j=i+1;j<solutions;j++){
-//           if (land_waypoints(i,2)>land_waypoints(j,2)){
-//             temp = land_waypoints.block(i,0,1,4);
-//             land_waypoints.block(i,0,1,4) = land_waypoints.block(j,0,1,4);
-//             land_waypoints.block(j,0,1,4) = temp;
-//           }
-//         }
-//       }
-//     }else{
-//       for (int i=0;i<solutions;i++){
-//         for (int j=i+1;j<solutions;j++){
-//           if (land_waypoints(i,3)>land_waypoints(j,3)){
-//             temp = land_waypoints.block(i,0,1,4);
-//             land_waypoints.block(i,0,1,4) = land_waypoints.block(j,0,1,4);
-//             land_waypoints.block(j,0,1,4) = temp;
-//           }
-//         }
-//       }
-//     }
-//   }
-//   return true;
-// }
-
-
 bool LandingCommander::toMatrix(const nav_msgs::OccupancyGrid& occupancyGrid, Eigen::MatrixXi& matrix){
   auto start = std::chrono::high_resolution_clock::now();
   int cols_ = occupancyGrid.info.height;
@@ -290,39 +190,20 @@ bool LandingCommander::toOccupancyGrid(const Eigen::MatrixXi& matrix, nav_msgs::
 }
 
 //rewrite with eigen block operations
-void LandingCommander::checkEmMarkEm(Eigen::MatrixXi& matrix, int& radius){
+void LandingCommander::checkEmMarkEm(Eigen::MatrixXi& matrix, const int& radius){
   auto start = std::chrono::high_resolution_clock::now();
-  Eigen::MatrixXi newMatrix;
-  newMatrix.resize(matrix.rows(),matrix.cols());
+  Eigen::MatrixXi newMatrix(matrix.rows()+radius*2, matrix.cols()+radius*2);
+  newMatrix.block(radius,radius,matrix.rows(),matrix.cols()) = matrix;
   for (int i=0;i<matrix.rows();i++){
     for (int j=0;j<matrix.cols();j++){
       if (matrix(i,j)==100){
-        Eigen::MatrixXi submap;
-        submap = matrix.block(i-radius, j-radius, radius*2+1, radius*2+1);
-        for (int k=0;k<submap.rows();k++){
-          for (int l=0;l<submap.cols();l++){
-            submap(k,l)=100;
-          }
-        }
-        // int subIndex_x, subIndex_y;
-        // int maxSubIndex_x,maxSubIndex_y;
-        // if (i-radius<0){subIndex_x=0;}
-        // else{subIndex_x = i-radius;}
-        // if (j-radius<0){subIndex_y=0;}
-        // else{subIndex_y = j-radius;}
-        // if (i+radius>matrix.rows()){maxSubIndex_x=matrix.rows();}
-        // else{maxSubIndex_x = i+radius;}
-        // if (j+radius>matrix.cols()){maxSubIndex_y=matrix.cols();}
-        // else{maxSubIndex_y = j+radius;}
-        // for (int k=subIndex_x;k<=maxSubIndex_x;k++){
-        //   for (int l=subIndex_y;l<=maxSubIndex_y;l++){
-        //     newMatrix(k,l)=100;
-        //   }
-        // }
-
+        Eigen::MatrixXi submap(radius*2+1,radius*2+1);
+        submap.setConstant(100);
+        newMatrix.block(i-radius,j-radius,submap.rows(),submap.cols()) = submap;
       }
     }
   }
+  matrix = newMatrix.block(radius,radius,matrix.cols(),matrix.rows());
   auto stop = std::chrono::high_resolution_clock::now();
   auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(stop - start);
   if (debug){ROS_WARN("checkEmMarkEm function executred in %i", duration);}

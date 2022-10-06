@@ -60,7 +60,7 @@ class LandingCommander{
     return isIn;
   }
 
-  void checkEmMarkEm(Eigen::MatrixXi& matrix, int& radius);
+  void checkEmMarkEm(Eigen::MatrixXi& matrix, const int& radius);
 
   void Debug( Eigen::MatrixXi& matrix, const Eigen::MatrixX4i& land_waypoints);
 
