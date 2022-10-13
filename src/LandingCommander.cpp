@@ -9,20 +9,24 @@ LandingCommander::LandingCommander(const ros::NodeHandle &nh_)
   fcuStateSub(NULL),
   fcuExtendedStateSub(NULL),
   sync(NULL),
+  land_pose_dist(0),
+  enableGuard(false),
+  have_land_point(false),
   baseFrameId("base_link"),
   safetyRadius(2.0),
-  stride(3),
+  ratio(0.0),
+  coefficients(0.0717,142.88,-80.628),
+  targetProcTime(200.0),
   OccupancyGridEigen(0,0),
   latchedTopics(true),
   land2base(false),
-  land_points(0,4),
+  land_points(0,3),
   safetyArea(true),
   debug(true),
   publishOccupancy(true),
   haveOccupancyGridEigen(false)
   {
     nodeHandle.param("safety_dist", safetyRadius, safetyRadius);
-    nodeHandle.param("stride", stride, stride);
     nodeHandle.param("robot_frame", baseFrameId, baseFrameId);
     nodeHandle.param("land_to_base", land2base, land2base);
     nodeHandle.param("debug",debug,debug);
@@ -32,7 +36,8 @@ LandingCommander::LandingCommander(const ros::NodeHandle &nh_)
     occupancyPub = nodeHandle.advertise<nav_msgs::OccupancyGrid>("occupancy_output", 5, latchedTopics);
     pos_setpoint = nodeHandle.advertise<geometry_msgs::PoseStamped>("mavros/setpoint_position/local", 10);
 
-    landingHandler = nodeHandle.createTimer(ros::Rate(20), &LandingCommander::handleWaypoint, this);
+    commanderTimer = nodeHandle.createTimer(ros::Rate(20), &LandingCommander::commander, this);
+    guardTimer = nodeHandle.createTimer(ros::Rate(2), &LandingCommander::guard, this);
 
     set_mode_client = nodeHandle.serviceClient<mavros_msgs::SetMode>("mavros/set_mode");
 
@@ -59,10 +64,6 @@ LandingCommander::~LandingCommander(){
     delete tfgridMapSub;
     tfgridMapSub = NULL;
   }
-  // if (land_points){
-  //   delete land_points;
-  //   land_points = NULL;
-  // }
 }
 
 
@@ -70,9 +71,10 @@ void LandingCommander::mainCallback(const nav_msgs::OccupancyGrid::ConstPtr& gri
   tf::StampedTransform worldToSensorTf;
   tfListener.lookupTransform(gridMap->header.frame_id, baseFrameId, gridMap->header.stamp, worldToSensorTf);
   tf::Point robotOriginTf = worldToSensorTf.getOrigin();
-  robotPose(0) = robotOriginTf.x(); robotPose(1) = robotOriginTf.y();
+  robotPose(0) = robotOriginTf.x(); robotPose(1) = robotOriginTf.y();     
   
-  toMatrix(*gridMap, OccupancyGridEigen);
+  toMatrix(*gridMap, OccupancyGridEigen, ratio);
+  if (debug){ROS_WARN("Ratio number = %f", ratio);}
 
   landState = extendedState->landed_state;
   armed = state->armed;
@@ -84,12 +86,11 @@ void LandingCommander::mainCallback(const nav_msgs::OccupancyGrid::ConstPtr& gri
   if (safetyArea){
     checkEmMarkEm(OccupancyGridEigen,subGridRadius);
   }
-  splincheckStride(OccupancyGridEigen, land_points, stride, robotPose, subGridRadius);
-  // splitncheckExpirimental(OccupancyGridEigen, robotPose, res, safetyRadius*2, land_points, land2base);
+  splincheckStride(OccupancyGridEigen, gridMap->info.origin, land_points, ratio, coefficients, targetProcTime, robotPose, subGridRadius);
 
   if (debug){ 
     ROS_WARN("Robot Position X: %i, Y: %i", robotPose(0), robotPose(1));
-    Debug(OccupancyGridEigen, land_points);
+    Debug(OccupancyGridEigen, land_points, gridMap->info.origin);
   }
 
   if (publishOccupancy){
@@ -100,76 +101,84 @@ void LandingCommander::mainCallback(const nav_msgs::OccupancyGrid::ConstPtr& gri
 }
 
 
-void LandingCommander::splincheckStride(const Eigen::MatrixXi& matrix, Eigen::MatrixX4i& land_waypoints, const int& stride_, const Eigen::Array2i& robotIndex, const int& radius){
+void LandingCommander::splincheckStride(
+  const Eigen::MatrixXi& matrix,
+  const geometry_msgs::Pose& origin, 
+  Eigen::MatrixX3i& land_waypoints, 
+  const double& ratio, 
+  const Eigen::Matrix<double,1,3>& coefficients_, 
+  const double& targetProcTime_, 
+  const Eigen::Array2i& robotIndex, 
+  const int& radius)
+  {
+  double strideD = -((coefficients_(0)*(matrix.rows()*matrix.cols())+coefficients_(1)*ratio-targetProcTime_)/coefficients_(2));
+  if (strideD<1.0){strideD=1.0;}
+  int stride = std::round(strideD);
   auto start = std::chrono::high_resolution_clock::now();
   int solutions_sum = 0;
   int width = matrix.rows();
   int height = matrix.cols();
-  if (width>radius*2+stride_ && height>radius*2+stride_){
-    for (int i=0+radius; i<matrix.rows()-radius; i=i+stride_){
-      for (int j=0+radius; j<matrix.cols()-radius; j=j+stride_){
-        Eigen::MatrixXi submap;
-        submap = matrix.block(i-radius,j-radius,radius*2+1,radius*2+1);
-        bool occupied = checkArea(submap);
-        if (!occupied){
-          Eigen::Matrix<int,1,4> solution;
-          solution(0) = i;
-          solution(1) = j;
-          int dist2robot = std::sqrt(std::pow((robotIndex(0)-i), 2)+std::pow((robotIndex(1)-j), 2));
+  for (int i=0+radius; i<matrix.rows()-radius; i=i+stride){
+    for (int j=0+radius; j<matrix.cols()-radius; j=j+stride){
+      Eigen::MatrixXi submap;
+      submap = matrix.block(i-radius,j-radius,radius*2+1,radius*2+1);
+      bool occupied = checkArea(submap);
+      if (!occupied){
+        Eigen::Matrix<int,1,3> solution;
+        solution(0) = i;
+        solution(1) = j;
+        if (land2base){
           int dist2base = std::sqrt(std::pow(-i, 2)+std::pow(-j,2));
+          solution(2) = dist2base;
+        }else{
+          int dist2robot = std::sqrt(std::pow((robotIndex(0)-i), 2)+std::pow((robotIndex(1)-j), 2));
           solution(2) = dist2robot;
-          solution(3) = dist2base;
-          land_waypoints.conservativeResize(solutions_sum+1,4);
-          land_waypoints.block(solutions_sum,0,1,4) = solution;
-          solutions_sum++;
-
         }
+        solution = fromMatrixToRealWorld(solution, origin);
+        land_waypoints.conservativeResize(solutions_sum+1,3);
+        land_waypoints.block(solutions_sum,0,1,3) = solution;
+        solutions_sum++;
+
       }
     }
-  }else{
-    Eigen::Matrix<int,1,4> solution;
-    solution(0) = 0;
-    solution(1) = 0;
-    int dist2robot = std::sqrt(std::pow((robotIndex(0)), 2)+std::pow((robotIndex(1)), 2));
-    int dist2base = 0;
-    solution(2) = dist2robot;
-    solution(3) = dist2base;
-    land_waypoints.resize(1,4);
-    land_waypoints.block(solutions_sum,0,1,4) = solution;
-    land2base = true;
   }
-  if (land2base){
-    land_waypoints = sortDescOrder(land_waypoints, 3);
-  }else{
-    land_waypoints = sortDescOrder(land_waypoints,2);
+  if(land_waypoints.rows()==0){
+    land_waypoints.conservativeResize(1,3);
+    land_waypoints.setZero();
   }
+
+  land_waypoints = sortDescOrder(land_waypoints);
+
   auto stop = std::chrono::high_resolution_clock::now();
   auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(stop - start);
-  if (debug){ROS_WARN("splincheckStride function executred in %i", duration);}
+  if (debug){ROS_WARN("splincheckStride function executred in %i with stride %i", duration, stride);}
 }
 
 
-bool LandingCommander::toMatrix(const nav_msgs::OccupancyGrid& occupancyGrid, Eigen::MatrixXi& matrix){
+void LandingCommander::toMatrix(const nav_msgs::OccupancyGrid& occupancyGrid, Eigen::MatrixXi& matrix, double& ratio_){
   auto start = std::chrono::high_resolution_clock::now();
   int cols_ = occupancyGrid.info.height;
   assert(cols_>0);
   int rows_ = occupancyGrid.info.width;
   assert(rows_>0);
   matrix.resize(rows_,cols_);
+  int occupied_counter=0;
   //Occupancy grid is ROW MAJOR but we will treat it as collumn major for our sanity's sake
   for (int i=0;i<occupancyGrid.data.size();i++) {
     Eigen::Array2i IndexXY; 
     IndexXY = getIndexFromLinearIndex(rows_, i);
     matrix(IndexXY(0),IndexXY(1))=occupancyGrid.data[i];
+    if (matrix(IndexXY(0),IndexXY(1))==100){occupied_counter++;}
   }
+  int matrix_size = matrix.rows()*matrix.cols();
+  ratio_ = (double)occupied_counter/matrix_size;
   auto stop = std::chrono::high_resolution_clock::now();
   auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(stop - start);
   if (debug){ROS_WARN("toMatrix function executred in %i", duration);}
-  return true;
 }
 
 
-bool LandingCommander::toOccupancyGrid(const Eigen::MatrixXi& matrix, nav_msgs::OccupancyGrid& occupancyGrid, const nav_msgs::MapMetaData& mapMetaData, const std_msgs::Header& header){
+void LandingCommander::toOccupancyGrid(const Eigen::MatrixXi& matrix, nav_msgs::OccupancyGrid& occupancyGrid, const nav_msgs::MapMetaData& mapMetaData, const std_msgs::Header& header){
   auto start = std::chrono::high_resolution_clock::now();
   occupancyGrid.data.clear();
   occupancyGrid.info = mapMetaData;
@@ -186,20 +195,19 @@ bool LandingCommander::toOccupancyGrid(const Eigen::MatrixXi& matrix, nav_msgs::
   auto stop = std::chrono::high_resolution_clock::now();
   auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(stop - start);
   if (debug){ROS_WARN("toOccupancyGrid function executed in %i", duration);}
-  return true;
 }
 
-//rewrite with eigen block operations
 void LandingCommander::checkEmMarkEm(Eigen::MatrixXi& matrix, const int& radius){
   auto start = std::chrono::high_resolution_clock::now();
   Eigen::MatrixXi newMatrix(matrix.rows()+radius*2, matrix.cols()+radius*2);
+  newMatrix.setConstant(0);
   newMatrix.block(radius,radius,matrix.rows(),matrix.cols()) = matrix;
+  Eigen::MatrixXi submap(radius*2+1,radius*2+1);
+  submap.setConstant(100);  
   for (int i=0;i<matrix.rows();i++){
     for (int j=0;j<matrix.cols();j++){
       if (matrix(i,j)==100){
-        Eigen::MatrixXi submap(radius*2+1,radius*2+1);
-        submap.setConstant(100);
-        newMatrix.block(i-radius,j-radius,submap.rows(),submap.cols()) = submap;
+        newMatrix.block(i,j,submap.rows(),submap.cols()) = submap;
       }
     }
   }
@@ -210,69 +218,70 @@ void LandingCommander::checkEmMarkEm(Eigen::MatrixXi& matrix, const int& radius)
 }
 
 
-void LandingCommander::Debug( Eigen::MatrixXi& matrix, const Eigen::MatrixX4i& land_waypoints){
+void LandingCommander::Debug( Eigen::MatrixXi& matrix, const Eigen::MatrixX3i& land_waypoints, const geometry_msgs::Pose& origin){
   if (land_waypoints.rows()>0){
     for (int i=0;i<land_waypoints.rows();i++){
-      int x = land_waypoints(i,0);
-      int y = land_waypoints(i,1);
-      matrix(x, y)=-1;
-      int dist2robot = land_waypoints(i,2);
-      int dist2base = land_waypoints(i,3);
-      // ROS_WARN("Land Waypoint (%i, %i), dist2robot: %i, dist2base: %i", x,y,dist2robot,dist2base);
+      Eigen::Matrix<int,1,3> land_waypoint(land_waypoints(i,0),land_waypoints(i,1),land_waypoints(i,2));
+      land_waypoint = fromRealWorldToMatrix(land_waypoint, origin);
+      int x = land_waypoint(0);
+      int y = land_waypoint(1);
+      if (i==0){
+        matrix(x,y)=-150;
+        ROS_WARN("nearest land_waypoint %i,%i, distance to taget %i", land_waypoint(0), land_waypoint(1), land_waypoint(2));
+      }else{
+        matrix(x,y)=-10;
+      }
+      int dist2target = land_waypoint(2);
     }
   }
 }
 
 
-void LandingCommander::handleWaypoint(const ros::TimerEvent&){
-  bool land_cmd_sent = false;
-  bool pos_cmd_sent = false;
-  bool have_land_point = false;
-  Eigen::Array2i land_target;
-  land_target.setZero();
-  geometry_msgs::PoseStamped land_pose;
+void LandingCommander::commander(const ros::TimerEvent&){
 
   if (haveOccupancyGridEigen){
-    if (land_points.rows()>0 && !have_land_point)
-    {
-      land_target(0)=land_points(0,0);
-      land_target(1)=land_points(0,1);
 
-      land_pose.pose.position.x = land_target(0);
-      land_pose.pose.position.y = land_target(0);
+    if (!have_land_point){
+      land_pose.pose.position.x = land_points(0,0);
+      land_pose.pose.position.y = land_points(0,1);
       land_pose.pose.position.z = 10;
-      
-      for(int i = 20; ros::ok() && i > 0; --i){
+      land_pose_dist = land_points(0,2);
+      for(int i = 50; ros::ok() && i > 0; --i){
         pos_setpoint.publish(land_pose);
       }
-      have_land_point = true;
     }
 
-    if ((OccupancyGridEigen(land_target(0),land_target(1))!=100) && have_land_point){
-      pos_setpoint.publish(land_pose);
+    if (mode=="OFFBOARD"){
+      have_land_point=true;
+    }else{
+      have_land_point=false;
+    }
 
-      mavros_msgs::SetMode land_set_mode;
-      mavros_msgs::SetMode position_set_mode;
+    if (have_land_point){
+      pos_setpoint.publish(land_pose);
 
       land_set_mode.request.custom_mode = "AUTO.LAND";
       position_set_mode.request.custom_mode = "POSCTL";
 
-      if (waypointReached(robotPose, land_target) && mode=="OFFBOARD" && landState!=1){
+      if (waypointReached(robotPose, land_pose.pose.position) && mode=="OFFBOARD" && landState!=1){
         if(set_mode_client.call(land_set_mode) && land_set_mode.response.mode_sent){
-          ROS_INFO("Land mode enabled");
+          if(debug){ROS_INFO("Land mode enabled");}
         }
       }
 
       if (landState==1 && armed && mode!="POSCTL"){
         if(set_mode_client.call(position_set_mode) && position_set_mode.response.mode_sent){
-          ROS_INFO("Switched back to position mode");
-          have_land_point = false;
+          if (debug){ROS_INFO("Switched back to position mode");}
         }
       }
     }
-
   }
 }
 
+void LandingCommander::guard(const ros::TimerEvent&){
+  if (mode=="AUTO.LAND" && OccupancyGridEigen(robotPose(0),robotPose(1))==100){
+    have_land_point=false;
+  }
+}
 
 }

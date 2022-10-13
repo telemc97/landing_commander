@@ -8,13 +8,11 @@ set(PACKAGE_DEPENDENCIES
   roscpp
   nav_msgs
   std_msgs
-  grid_map_core
-  grid_map_ros
-  grid_map_msgs
   eigen_conversions
   mavros
   mavros_msgs
   message_filters
+  tf
 )
 
 
