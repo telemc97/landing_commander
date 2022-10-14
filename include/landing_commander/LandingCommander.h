@@ -75,7 +75,7 @@ class LandingCommander{
   }
 
 
-  Eigen::MatrixX3i sortDescOrder (Eigen::MatrixX3i& land_waypoints){
+  Eigen::MatrixX3i sortAscOrder (Eigen::MatrixX3i& land_waypoints){
     Eigen::Matrix<int,1,3> temp;
     for (int i=0;i<land_waypoints.rows();i++){
       for (int j=i+1;j<land_waypoints.rows();j++){
@@ -156,6 +156,13 @@ class LandingCommander{
     point(2) = rw_point(2);
 
     return point;
+  }
+
+  int euclidianDistance(const Eigen::Matrix<int,1,2>& pt0, const Eigen::Matrix<int,1,2>& pt1){
+    double dist;
+    dist = std::sqrt(std::pow((pt1(0)-pt0(0)),2)+std::pow((pt1(1)-pt0(1)),2));
+    int dist_int = std::round(dist);
+    return dist;
   }
 
   bool waypointReached(const Eigen::Matrix<int,1,2>& robot_pose, const geometry_msgs::Point& land_target){

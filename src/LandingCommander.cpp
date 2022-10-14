@@ -87,7 +87,7 @@ void LandingCommander::mainCallback(const nav_msgs::OccupancyGrid::ConstPtr& gri
     checkEmMarkEm(OccupancyGridEigen,subGridRadius);
   }
   splincheckStride(OccupancyGridEigen, gridMap->info.origin, land_points, ratio, coefficients, targetProcTime, robotPose, subGridRadius);
-
+  //land_points are in occupancy's grid coords from now on (with proper origin)
   if (debug){ 
     ROS_WARN("Robot Position X: %i, Y: %i", robotPose(0), robotPose(1));
     Debug(OccupancyGridEigen, land_points, gridMap->info.origin);
@@ -127,14 +127,14 @@ void LandingCommander::splincheckStride(
         Eigen::Matrix<int,1,3> solution;
         solution(0) = i;
         solution(1) = j;
-        if (land2base){
-          int dist2base = std::sqrt(std::pow(-i, 2)+std::pow(-j,2));
-          solution(2) = dist2base;
-        }else{
-          int dist2robot = std::sqrt(std::pow((robotIndex(0)-i), 2)+std::pow((robotIndex(1)-j), 2));
-          solution(2) = dist2robot;
-        }
         solution = fromMatrixToRealWorld(solution, origin);
+        if (land2base){
+          Eigen::Matrix<int,1,2> base;
+          base.setZero();
+          solution(2) = euclidianDistance(solution.block(0,0,1,2), base);
+        }else{
+          solution(2) = euclidianDistance(solution.block(0,0,1,2), robotIndex);;
+        }
         land_waypoints.conservativeResize(solutions_sum+1,3);
         land_waypoints.block(solutions_sum,0,1,3) = solution;
         solutions_sum++;
@@ -147,7 +147,7 @@ void LandingCommander::splincheckStride(
     land_waypoints.setZero();
   }
 
-  land_waypoints = sortDescOrder(land_waypoints);
+  land_waypoints = sortAscOrder(land_waypoints);
 
   auto stop = std::chrono::high_resolution_clock::now();
   auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(stop - start);
@@ -221,17 +221,17 @@ void LandingCommander::checkEmMarkEm(Eigen::MatrixXi& matrix, const int& radius)
 void LandingCommander::Debug( Eigen::MatrixXi& matrix, const Eigen::MatrixX3i& land_waypoints, const geometry_msgs::Pose& origin){
   if (land_waypoints.rows()>0){
     for (int i=0;i<land_waypoints.rows();i++){
-      Eigen::Matrix<int,1,3> land_waypoint(land_waypoints(i,0),land_waypoints(i,1),land_waypoints(i,2));
-      land_waypoint = fromRealWorldToMatrix(land_waypoint, origin);
-      int x = land_waypoint(0);
-      int y = land_waypoint(1);
+      Eigen::Matrix<int,1,3> land_waypoint_matrix(land_waypoints(i,0),land_waypoints(i,1),land_waypoints(i,2));
+      land_waypoint_matrix = fromRealWorldToMatrix(land_waypoint_matrix, origin);
+      int x = land_waypoint_matrix(0);
+      int y = land_waypoint_matrix(1);
       if (i==0){
         matrix(x,y)=-150;
-        ROS_WARN("nearest land_waypoint %i,%i, distance to taget %i", land_waypoint(0), land_waypoint(1), land_waypoint(2));
+        ROS_WARN("nearest land_waypoint %i,%i, distance to taget %i", land_waypoints(0,0), land_waypoints(0,1), land_waypoints(0,2));
       }else{
         matrix(x,y)=-10;
       }
-      int dist2target = land_waypoint(2);
+      // ROS_WARN("Waypoints (%i,%i), distance: %i", land_waypoints(i,0),land_waypoints(i,1),land_waypoints(i,2));
     }
   }
 }
