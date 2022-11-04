@@ -86,6 +86,7 @@ void LandingCommander::mainCallback(const nav_msgs::OccupancyGrid::ConstPtr& gri
   if (safetyArea){
     checkEmMarkEm(OccupancyGridEigen,subGridRadius);
   }
+
   splincheckStride(OccupancyGridEigen, gridMap->info.origin, land_points, ratio, coefficients, targetProcTime, robotPose, subGridRadius);
   //land_points are in occupancy's grid coords from now on (with proper origin)
   if (debug){ 
