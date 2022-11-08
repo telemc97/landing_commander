@@ -111,8 +111,6 @@ class LandingCommander{
 
   void commander(const ros::TimerEvent&);
 
-  void guard(const ros::TimerEvent&);
-
   int metersToGrids(const double& meters, const double& res){
     int grids;
     grids = meters/res;
@@ -167,12 +165,22 @@ class LandingCommander{
 
   bool waypointReached(const Eigen::Matrix<int,1,2>& robot_pose, const geometry_msgs::Point& land_target){
     bool waypointReached;
-    if (robot_pose(0)==land_target.x&&robot_pose(1)==land_target.y){
+    if (robot_pose(0)==land_target.x && robot_pose(1)==land_target.y){
       waypointReached=true;
     }else{
       waypointReached=false;
     }
     return waypointReached;
+  }
+
+  bool validPoint(const Eigen::Matrix<int,1,3> land_point_, const Eigen::MatrixX3i land_points_){
+    bool isValid = false;
+    for (int i=0;i<land_points_.rows();i++){
+      if (land_points_(i,0) == land_point_(0) && land_points_(i,1)==land_point_(1)){
+        isValid = true;
+      }
+    }
+    return isValid;
   }
 
   mavros_msgs::State current_state;
@@ -187,6 +195,13 @@ class LandingCommander{
   message_filters::Subscriber<mavros_msgs::ExtendedState>* fcuExtendedStateSub;
 
   Eigen::MatrixX3i land_points;
+
+  //Commander loop
+  Eigen::Matrix<int,1,3> active_land_point;
+  bool land_point_serching;
+  geometry_msgs::Pose map_origin;
+  bool armed;
+  std::string mode;
 
   tf::MessageFilter<nav_msgs::OccupancyGrid>* tfgridMapSub;
   message_filters::Synchronizer<MySyncPolicy>* sync;
@@ -205,18 +220,14 @@ class LandingCommander{
 
 
   int landState;
-  bool armed;
-  std::string mode;
   double safetyRadius;
   double ratio;
 
   Eigen::Matrix<double,1,3> coefficients;
-
   double targetProcTime;
 
   bool latchedTopics;
   bool enableGuard;
-  bool have_land_point;
   bool land2base;
   bool debug;
   bool publishOccupancy;
