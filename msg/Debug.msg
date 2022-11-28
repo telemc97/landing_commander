@@ -1,0 +1,9 @@
+Header Header
+int64 toMatrix_time
+int64 checkEmMarkEm_time
+int64 splitNCheckStride_time
+int64 toOccupancyGrid_time
+float64 ratio
+int64 stride
+LandingTarget landing_target
+RobotPosition robot_position

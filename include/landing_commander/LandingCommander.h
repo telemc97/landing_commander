@@ -8,6 +8,7 @@
 #include <message_filters/time_synchronizer.h>
 #include <message_filters/synchronizer.h>
 #include <message_filters/sync_policies/approximate_time.h>
+#include <landing_commander/Debug.h>
 
 #include <eigen_conversions/eigen_msg.h>
 
@@ -173,7 +174,7 @@ class LandingCommander{
     return waypointReached;
   }
 
-  bool validPoint(const Eigen::Matrix<int,1,3> land_point_, const Eigen::MatrixX3i land_points_){
+  bool validPoint(const Eigen::Matrix<int,1,3>& land_point_, const Eigen::MatrixX3i land_points_){
     bool isValid = false;
     for (int i=0;i<land_points_.rows();i++){
       if (land_points_(i,0) == land_point_(0) && land_points_(i,1)==land_point_(1)){
@@ -209,8 +210,10 @@ class LandingCommander{
 
   ros::Publisher occupancyPub;
   ros::Publisher pos_setpoint;
+  ros::Publisher debugger;
   ros::Timer commanderTimer;
   ros::Timer guardTimer;
+  landing_commander::Debug debug_msg;
   nav_msgs::OccupancyGrid gridMapOutput;
   Eigen::MatrixXi OccupancyGridEigen;
   Eigen::Matrix<int,1,2> robotPose;
@@ -222,6 +225,8 @@ class LandingCommander{
   int landState;
   double safetyRadius;
   double ratio;
+
+  double minStride;
 
   Eigen::Matrix<double,1,3> coefficients;
   double targetProcTime;

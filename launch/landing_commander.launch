@@ -1,8 +1,32 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <launch>
+    <arg name="safety_dist"                            	default="2.0"/>
+    <arg name="safety_area"                            	default="safety_area"/>
 
+    <arg name="minimum_stride"                          default="2.0"/>
+    <arg name="target_proc_time"                        default="200.0"/>
+    <arg name="coefficient_matrix_size"                 default="0.0717"/>
+    <arg name="coefficient_proc_time"                   default="142.88"/>
+    <arg name="coefficient_stride"                      default="-80.628"/>
+
+    <arg name="robot_frame"                             default="base_link"/>
+    <arg name="land_to_base"                            default="False"/>
+    <arg name="debug"                                   default="True"/>
+    <arg name="show_occupancy_map"                      default="True"/>
+    <arg name="mark_safety_area"                        default="True"/>
+    
     <node pkg="landing_commander" type="landing_commander_node" name="landing_commander">
-
+      <param name="safety_dist"                   	 	      value="$(arg safety_dist)"/>
+      <param name="target_proc_time"                   	 	  value="$(arg target_proc_time)"/>
+      <param name="safety_area"                   	 	      value="$(arg safety_area)"/>
+      <param name="coefficient_matrix_size"                 value="$(arg coefficient_matrix_size)"/>
+      <param name="coefficient_proc_time"                   value="$(arg coefficient_proc_time)"/>
+      <param name="coefficient_stride"                   	 	value="$(arg coefficient_stride)"/>
+      <param name="robot_frame"                   	 	      value="$(arg robot_frame)"/>
+      <param name="land_to_base"                   	 	      value="$(arg land_to_base)"/>
+      <param name="debug"                   	 	            value="$(arg debug)"/>
+      <param name="show_occupancy_map"                   	 	value="$(arg show_occupancy_map)"/>
+      <param name="mark_safety_area"                   	 	  value="$(arg mark_safety_area)"/>
     </node>
 
 </launch>

@@ -19,6 +19,7 @@ LandingCommander::LandingCommander(const ros::NodeHandle &nh_)
   targetProcTime(200.0),
   OccupancyGridEigen(0,0),
   latchedTopics(true),
+  minStride(2.0),
   land2base(false),
   land_points(0,3),
   active_land_point(1,3),
@@ -28,6 +29,11 @@ LandingCommander::LandingCommander(const ros::NodeHandle &nh_)
   haveOccupancyGridEigen(false)
   {
     nodeHandle.param("safety_dist", safetyRadius, safetyRadius);
+    nodeHandle.param("target_proc_time", targetProcTime, targetProcTime);
+    nodeHandle.param("safety_area", safetyArea, safetyArea);
+    nodeHandle.param("coefficient_matrix_size", coefficients(0), coefficients(0));
+    nodeHandle.param("coefficient_proc_time", coefficients(1), coefficients(1));
+    nodeHandle.param("coefficient_stride", coefficients(2), coefficients(2));
     nodeHandle.param("robot_frame", baseFrameId, baseFrameId);
     nodeHandle.param("land_to_base", land2base, land2base);
     nodeHandle.param("debug",debug,debug);
@@ -35,6 +41,9 @@ LandingCommander::LandingCommander(const ros::NodeHandle &nh_)
     nodeHandle.param("mark_safety_area",safetyArea, safetyArea);
 
     occupancyPub = nodeHandle.advertise<nav_msgs::OccupancyGrid>("occupancy_output", 5, latchedTopics);
+
+    if (debug) {debugger = nodeHandle.advertise<landing_commander::Debug>("debug", 5, latchedTopics);}
+
     pos_setpoint = nodeHandle.advertise<geometry_msgs::PoseStamped>("mavros/setpoint_position/local", 10);
 
     commanderTimer = nodeHandle.createTimer(ros::Rate(20), &LandingCommander::commander, this);
@@ -74,7 +83,7 @@ void LandingCommander::mainCallback(const nav_msgs::OccupancyGrid::ConstPtr& gri
   robotPose(0) = robotOriginTf.x(); robotPose(1) = robotOriginTf.y();     
   
   toMatrix(*gridMap, OccupancyGridEigen, ratio);
-  if (debug){ROS_WARN("Ratio number = %f", ratio);}
+  if (debug){debug_msg.ratio = ratio;}
 
   //Info to be passed to commander
   landState = extendedState->landed_state;
@@ -92,7 +101,6 @@ void LandingCommander::mainCallback(const nav_msgs::OccupancyGrid::ConstPtr& gri
   splincheckStride(OccupancyGridEigen, gridMap->info.origin, land_points, ratio, coefficients, targetProcTime, robotPose, subGridRadius);
   //land_points are in occupancy's grid coords from now on (with proper origin)
   if (debug){ 
-    ROS_WARN("Robot Position X: %i, Y: %i", robotPose(0), robotPose(1));
     Debug(OccupancyGridEigen, land_points, gridMap->info.origin);
   }
 
@@ -101,6 +109,14 @@ void LandingCommander::mainCallback(const nav_msgs::OccupancyGrid::ConstPtr& gri
     occupancyPub.publish(gridMapOutput);
   }
   haveOccupancyGridEigen = true;
+
+  if(debug){
+    debug_msg.robot_position.x = robotPose(0);
+    debug_msg.robot_position.y = robotPose(1);
+    debug_msg.Header.stamp = ros::Time::now();
+    debugger.publish(debug_msg);
+  }
+
 }
 
 
@@ -114,10 +130,10 @@ void LandingCommander::splincheckStride(
   const Eigen::Array2i& robotIndex, 
   const int& radius)
   {
-  double strideD = -((coefficients_(0)*(matrix.rows()*matrix.cols())+coefficients_(1)*ratio-targetProcTime_)/coefficients_(2));
-  if (strideD<1.0){strideD=2.0;}
-  int stride = std::round(strideD);
   auto start = std::chrono::high_resolution_clock::now();
+  double strideD = -((coefficients_(0)*(matrix.rows()*matrix.cols())+coefficients_(1)*ratio-targetProcTime_)/coefficients_(2));
+  if (strideD<1.0){strideD=minStride;}
+  int stride = std::round(strideD);
   int solutions_sum = 0;
   int width = matrix.rows();
   int height = matrix.cols();
@@ -152,9 +168,14 @@ void LandingCommander::splincheckStride(
 
   land_waypoints = sortAscOrder(land_waypoints);
 
+  if (debug){
+    debug_msg.landing_target.x = land_points(0,0);
+    debug_msg.landing_target.y = land_points(0,1);
+    debug_msg.landing_target.distance = land_points(0,2);
+  }
   auto stop = std::chrono::high_resolution_clock::now();
   auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(stop - start);
-  if (debug){ROS_WARN("splincheckStride function executred in %i with stride %i", duration, stride);}
+  if (debug){debug_msg.splitNCheckStride_time = duration.count();}
 }
 
 
@@ -177,7 +198,7 @@ void LandingCommander::toMatrix(const nav_msgs::OccupancyGrid& occupancyGrid, Ei
   ratio_ = (double)occupied_counter/matrix_size;
   auto stop = std::chrono::high_resolution_clock::now();
   auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(stop - start);
-  if (debug){ROS_WARN("toMatrix function executred in %i", duration);}
+  if (debug){debug_msg.toMatrix_time = duration.count();}
 }
 
 
@@ -197,7 +218,7 @@ void LandingCommander::toOccupancyGrid(const Eigen::MatrixXi& matrix, nav_msgs::
   }
   auto stop = std::chrono::high_resolution_clock::now();
   auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(stop - start);
-  if (debug){ROS_WARN("toOccupancyGrid function executed in %i", duration);}
+  if (debug){debug_msg.toOccupancyGrid_time = duration.count();}
 }
 
 void LandingCommander::checkEmMarkEm(Eigen::MatrixXi& matrix, const int& radius){
@@ -217,7 +238,7 @@ void LandingCommander::checkEmMarkEm(Eigen::MatrixXi& matrix, const int& radius)
   matrix = newMatrix.block(radius,radius,matrix.rows(),matrix.cols());
   auto stop = std::chrono::high_resolution_clock::now();
   auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(stop - start);
-  if (debug){ROS_WARN("checkEmMarkEm function executred in %i", duration);}
+  if (debug){debug_msg.checkEmMarkEm_time = duration.count();}
 }
 
 
@@ -230,11 +251,9 @@ void LandingCommander::Debug( Eigen::MatrixXi& matrix, const Eigen::MatrixX3i& l
       int y = land_waypoint_matrix(1);
       if (i==0){
         matrix(x,y)=-150;
-        ROS_WARN("nearest land_waypoint %i,%i, distance to taget %i", land_waypoints(0,0), land_waypoints(0,1), land_waypoints(0,2));
       }else{
         matrix(x,y)=-10;
       }
-      // ROS_WARN("Waypoints (%i,%i), distance: %i", land_waypoints(i,0),land_waypoints(i,1),land_waypoints(i,2));
     }
   }
 }
@@ -250,21 +269,20 @@ void LandingCommander::commander(const ros::TimerEvent&){
       land_pose.pose.position.y = land_points(0,1);
       land_pose.pose.position.z = 10;
       land_pose_dist = land_points(0,2);
+      land_point_serching = false;
       for(int i = 50; ros::ok() && i > 0; --i){
         pos_setpoint.publish(land_pose);
       }
     }
     
-    if (mode=="OFFBOARD"){
-      land_point_serching=false;
-    }else{
-      land_point_serching=true;
-    }
+    // if (mode=="OFFBOARD"){
+    //   land_point_serching=false;
+    // }
 
+    //check if landing point is occupied;
     if ( !validPoint(active_land_point, land_points) && land_point_serching==false ){
-      land_point_serching==true;
+      land_point_serching = true;
     }
-
 
     if (!land_point_serching){
       pos_setpoint.publish(land_pose);

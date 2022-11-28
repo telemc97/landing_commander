@@ -13,12 +13,25 @@ set(PACKAGE_DEPENDENCIES
   mavros_msgs
   message_filters
   tf
+  message_generation
+  message_runtime
 )
 
 
 find_package(catkin REQUIRED COMPONENTS ${PACKAGE_DEPENDENCIES})
 
 find_package(Eigen3 REQUIRED)
+
+add_message_files(FILES
+  Debug.msg
+  LandingTarget.msg
+  RobotPosition.msg
+)
+
+generate_messages(
+  DEPENDENCIES
+  std_msgs
+)
 
 catkin_package(
   INCLUDE_DIRS include ${Eigen_INCLUDE_DIRS}
