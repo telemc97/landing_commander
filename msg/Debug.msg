@@ -5,5 +5,7 @@ int64 splitNCheckStride_time
 int64 toOccupancyGrid_time
 float64 ratio
 int64 stride
+bool land_point_serching
 LandingTarget landing_target
+LandingTarget active_land_target
 RobotPosition robot_position

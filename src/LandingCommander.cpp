@@ -110,9 +110,21 @@ void LandingCommander::mainCallback(const nav_msgs::OccupancyGrid::ConstPtr& gri
   }
   haveOccupancyGridEigen = true;
 
+  //Debug messages population
   if(debug){
     debug_msg.robot_position.x = robotPose(0);
     debug_msg.robot_position.y = robotPose(1);
+
+    debug_msg.landing_target.x = land_points(0,0);
+    debug_msg.landing_target.y = land_points(0,1);
+    debug_msg.landing_target.distance = land_points(0,2);
+
+    debug_msg.active_land_target.x = active_land_point(0);
+    debug_msg.active_land_target.y = active_land_point(1);
+    debug_msg.active_land_target.distance = active_land_point(2);
+
+    debug_msg.land_point_serching = land_point_serching;
+
     debug_msg.Header.stamp = ros::Time::now();
     debugger.publish(debug_msg);
   }
@@ -168,11 +180,6 @@ void LandingCommander::splincheckStride(
 
   land_waypoints = sortAscOrder(land_waypoints);
 
-  if (debug){
-    debug_msg.landing_target.x = land_points(0,0);
-    debug_msg.landing_target.y = land_points(0,1);
-    debug_msg.landing_target.distance = land_points(0,2);
-  }
   auto stop = std::chrono::high_resolution_clock::now();
   auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(stop - start);
   if (debug){debug_msg.splitNCheckStride_time = duration.count();}
@@ -274,14 +281,13 @@ void LandingCommander::commander(const ros::TimerEvent&){
         pos_setpoint.publish(land_pose);
       }
     }
-    
-    // if (mode=="OFFBOARD"){
-    //   land_point_serching=false;
-    // }
 
     //check if landing point is occupied;
     if ( !validPoint(active_land_point, land_points) && land_point_serching==false ){
       land_point_serching = true;
+      if (active_land_point.isZero() && land2base){
+        land2base = false;
+      }
     }
 
     if (!land_point_serching){
