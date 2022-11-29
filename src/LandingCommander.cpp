@@ -142,6 +142,7 @@ void LandingCommander::splincheckStride(
   const Eigen::Array2i& robotIndex, 
   const int& radius)
   {
+  land_waypoints.resize(0,3);
   auto start = std::chrono::high_resolution_clock::now();
   double strideD = -((coefficients_(0)*(matrix.rows()*matrix.cols())+coefficients_(1)*ratio-targetProcTime_)/coefficients_(2));
   if (strideD<1.0){strideD=minStride;}
