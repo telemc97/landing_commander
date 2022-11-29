@@ -60,8 +60,6 @@ LandingCommander::LandingCommander(const ros::NodeHandle &nh_)
     sync = new message_filters::Synchronizer<MySyncPolicy>(MySyncPolicy(10), *tfgridMapSub, *fcuStateSub, *fcuExtendedStateSub);
 
     sync->registerCallback(boost::bind(&LandingCommander::mainCallback, this, boost::placeholders::_1, boost::placeholders::_2, boost::placeholders::_3));
-    
-    // tfgridMapSub->registerCallback(boost::bind(&LandingCommander::mainCallback, this, boost::placeholders::_1));
   }
 
 LandingCommander::~LandingCommander(){
@@ -69,6 +67,11 @@ LandingCommander::~LandingCommander(){
     delete gridMapSub;
     gridMapSub = NULL;
   }  
+  if (sync){
+    delete sync;
+    sync = NULL;
+  }
+  
   if (tfgridMapSub){
     delete tfgridMapSub;
     tfgridMapSub = NULL;
@@ -153,6 +156,7 @@ void LandingCommander::splincheckStride(
   for (int i=0+radius; i<matrix.rows()-radius; i=i+stride){
     for (int j=0+radius; j<matrix.cols()-radius; j=j+stride){
       Eigen::MatrixXi submap;
+      submap.resize(radius*2+1,radius*2+1);
       submap = matrix.block(i-radius,j-radius,radius*2+1,radius*2+1);
       bool occupied = checkArea(submap);
       if (!occupied){
@@ -189,6 +193,7 @@ void LandingCommander::splincheckStride(
 
 void LandingCommander::toMatrix(const nav_msgs::OccupancyGrid& occupancyGrid, Eigen::MatrixXi& matrix, double& ratio_){
   auto start = std::chrono::high_resolution_clock::now();
+  matrix.resize(0,0);
   int cols_ = occupancyGrid.info.height;
   assert(cols_>0);
   int rows_ = occupancyGrid.info.width;
@@ -231,19 +236,19 @@ void LandingCommander::toOccupancyGrid(const Eigen::MatrixXi& matrix, nav_msgs::
 
 void LandingCommander::checkEmMarkEm(Eigen::MatrixXi& matrix, const int& radius){
   auto start = std::chrono::high_resolution_clock::now();
-  Eigen::MatrixXi newMatrix(matrix.rows()+radius*2, matrix.cols()+radius*2);
+  Eigen::MatrixXi newMatrix;
+  newMatrix.resize(matrix.rows()+radius*2, matrix.cols()+radius*2);
   newMatrix.setConstant(0);
   newMatrix.block(radius,radius,matrix.rows(),matrix.cols()) = matrix;
-  Eigen::MatrixXi submap(radius*2+1,radius*2+1);
-  submap.setConstant(100);  
   for (int i=0;i<matrix.rows();i++){
     for (int j=0;j<matrix.cols();j++){
       if (matrix(i,j)==100){
-        newMatrix.block(i,j,submap.rows(),submap.cols()) = submap;
+        newMatrix.block(i,j,radius*2+1,radius*2+1).setConstant(100);
       }
     }
   }
   matrix = newMatrix.block(radius,radius,matrix.rows(),matrix.cols());
+  newMatrix.resize(0,0);
   auto stop = std::chrono::high_resolution_clock::now();
   auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(stop - start);
   if (debug){debug_msg.checkEmMarkEm_time = duration.count();}
@@ -311,7 +316,4 @@ void LandingCommander::commander(const ros::TimerEvent&){
     }
   }
 }
-
-
-
 }

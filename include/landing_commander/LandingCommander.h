@@ -63,11 +63,11 @@ class LandingCommander{
 
   void Debug( Eigen::MatrixXi& matrix, const Eigen::MatrixX3i& land_waypoints, const geometry_msgs::Pose& origin);
 
-  bool checkArea(Eigen::MatrixXi& matrix){
+  bool checkArea(Eigen::MatrixXi& matrix_){
     bool occupied_ = false;
-    for (int i=0;i<matrix.rows();i++){
-      for (int j=0;j<matrix.cols();j++){
-        if (matrix(i,j)==100){
+    for (int i=0;i<matrix_.rows();i++){
+      for (int j=0;j<matrix_.cols();j++){
+        if (matrix_(i,j)==100){
           occupied_ = true;
         }
       }
