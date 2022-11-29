@@ -31,6 +31,7 @@ LandingCommander::LandingCommander(const ros::NodeHandle &nh_)
     nodeHandle.param("safety_dist", safetyRadius, safetyRadius);
     nodeHandle.param("target_proc_time", targetProcTime, targetProcTime);
     nodeHandle.param("safety_area", safetyArea, safetyArea);
+    nodeHandle.param("minimum_strde", minStride, minStride);
     nodeHandle.param("coefficient_matrix_size", coefficients(0), coefficients(0));
     nodeHandle.param("coefficient_proc_time", coefficients(1), coefficients(1));
     nodeHandle.param("coefficient_stride", coefficients(2), coefficients(2));
@@ -60,6 +61,9 @@ LandingCommander::LandingCommander(const ros::NodeHandle &nh_)
     sync = new message_filters::Synchronizer<MySyncPolicy>(MySyncPolicy(10), *tfgridMapSub, *fcuStateSub, *fcuExtendedStateSub);
 
     sync->registerCallback(boost::bind(&LandingCommander::mainCallback, this, boost::placeholders::_1, boost::placeholders::_2, boost::placeholders::_3));
+
+    land_points.resize(maxLandingPoints,3);
+    land_points.setZero();
   }
 
 LandingCommander::~LandingCommander(){
@@ -145,7 +149,6 @@ void LandingCommander::splincheckStride(
   const Eigen::Array2i& robotIndex, 
   const int& radius)
   {
-  land_waypoints.resize(0,3);
   auto start = std::chrono::high_resolution_clock::now();
   double strideD = -((coefficients_(0)*(matrix.rows()*matrix.cols())+coefficients_(1)*ratio-targetProcTime_)/coefficients_(2));
   if (strideD<1.0){strideD=minStride;}
@@ -171,16 +174,16 @@ void LandingCommander::splincheckStride(
         }else{
           solution(2) = euclidianDistance(solution.block(0,0,1,2), robotIndex);
         }
-        land_waypoints.conservativeResize(solutions_sum+1,3);
+        // land_waypoints.conservativeResize(solutions_sum+1,3);
         land_waypoints.block(solutions_sum,0,1,3) = solution;
         solutions_sum++;
-
+        if (solutions_sum = maxLandingPoints){
+          //get out of both loops 
+          j = matrix.cols()-radius;
+          i = matrix.rows()-radius;
+        }
       }
     }
-  }
-  if(land_waypoints.rows()==0){
-    land_waypoints.conservativeResize(1,3);
-    land_waypoints.setZero();
   }
 
   land_waypoints = sortAscOrder(land_waypoints);
@@ -193,7 +196,6 @@ void LandingCommander::splincheckStride(
 
 void LandingCommander::toMatrix(const nav_msgs::OccupancyGrid& occupancyGrid, Eigen::MatrixXi& matrix, double& ratio_){
   auto start = std::chrono::high_resolution_clock::now();
-  matrix.resize(0,0);
   int cols_ = occupancyGrid.info.height;
   assert(cols_>0);
   int rows_ = occupancyGrid.info.width;
@@ -248,7 +250,6 @@ void LandingCommander::checkEmMarkEm(Eigen::MatrixXi& matrix, const int& radius)
     }
   }
   matrix = newMatrix.block(radius,radius,matrix.rows(),matrix.cols());
-  newMatrix.resize(0,0);
   auto stop = std::chrono::high_resolution_clock::now();
   auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(stop - start);
   if (debug){debug_msg.checkEmMarkEm_time = duration.count();}
@@ -276,6 +277,20 @@ void LandingCommander::commander(const ros::TimerEvent&){
 
   if (haveOccupancyGridEigen){
 
+    if (mode=="OFFBOARD"){
+      land_point_serching = false;
+    }else if (mode=="POSCTL"){
+      land_point_serching = true;
+    }
+
+    //check if landing point is occupied;
+    if ( !validPoint(active_land_point, land_points) && land_point_serching==false ){
+      land_point_serching = true;
+      if (active_land_point.isZero() && land2base){
+        land2base = false;
+      }
+    }
+
     if(land_point_serching){
       active_land_point = land_points.block(0,0,1,3);
       land_pose.pose.position.x = land_points(0,0);
@@ -285,14 +300,6 @@ void LandingCommander::commander(const ros::TimerEvent&){
       land_point_serching = false;
       for(int i = 50; ros::ok() && i > 0; --i){
         pos_setpoint.publish(land_pose);
-      }
-    }
-
-    //check if landing point is occupied;
-    if ( !validPoint(active_land_point, land_points) && land_point_serching==false ){
-      land_point_serching = true;
-      if (active_land_point.isZero() && land2base){
-        land2base = false;
       }
     }
 
