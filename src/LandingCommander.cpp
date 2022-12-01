@@ -26,7 +26,7 @@ LandingCommander::LandingCommander(const ros::NodeHandle &nh_)
   safetyArea(true),
   debug(true),
   publishOccupancy(true),
-  haveOccupancyGridEigen(false)
+  land_points_temp(0,3)
   {
     nodeHandle.param("safety_dist", safetyRadius, safetyRadius);
     nodeHandle.param("target_proc_time", targetProcTime, targetProcTime);
@@ -47,7 +47,7 @@ LandingCommander::LandingCommander(const ros::NodeHandle &nh_)
 
     pos_setpoint = nodeHandle.advertise<geometry_msgs::PoseStamped>("mavros/setpoint_position/local", 10);
 
-    commanderTimer = nodeHandle.createTimer(ros::Rate(20), &LandingCommander::commander, this);
+    commanderTimer = nodeHandle.createTimer(ros::Rate(2), &LandingCommander::commander, this);
 
     set_mode_client = nodeHandle.serviceClient<mavros_msgs::SetMode>("mavros/set_mode");
 
@@ -62,7 +62,7 @@ LandingCommander::LandingCommander(const ros::NodeHandle &nh_)
 
     sync->registerCallback(boost::bind(&LandingCommander::mainCallback, this, boost::placeholders::_1, boost::placeholders::_2, boost::placeholders::_3));
 
-    land_points.resize(maxLandingPoints,3);
+    land_points.conservativeResize(1,3);
     land_points.setZero();
   }
 
@@ -174,14 +174,9 @@ void LandingCommander::splincheckStride(
         }else{
           solution(2) = euclidianDistance(solution.block(0,0,1,2), robotIndex);
         }
-        // land_waypoints.conservativeResize(solutions_sum+1,3);
+        land_waypoints.conservativeResize(solutions_sum+1,3);
         land_waypoints.block(solutions_sum,0,1,3) = solution;
         solutions_sum++;
-        if (solutions_sum = maxLandingPoints){
-          //get out of both loops 
-          j = matrix.cols()-radius;
-          i = matrix.rows()-radius;
-        }
       }
     }
   }
@@ -274,9 +269,9 @@ void LandingCommander::Debug( Eigen::MatrixXi& matrix, const Eigen::MatrixX3i& l
 
 
 void LandingCommander::commander(const ros::TimerEvent&){
-
   if (haveOccupancyGridEigen){
-
+    land_points_temp.resize(land_points.rows(), land_points.cols());
+    land_points_temp = land_points;
     if (mode=="OFFBOARD"){
       land_point_serching = false;
     }else if (mode=="POSCTL"){
@@ -284,7 +279,7 @@ void LandingCommander::commander(const ros::TimerEvent&){
     }
 
     //check if landing point is occupied;
-    if ( !validPoint(active_land_point, land_points) && land_point_serching==false ){
+    if ( !validPoint(active_land_point, land_points_temp) && land_point_serching==false ){
       land_point_serching = true;
       if (active_land_point.isZero() && land2base){
         land2base = false;
@@ -292,11 +287,11 @@ void LandingCommander::commander(const ros::TimerEvent&){
     }
 
     if(land_point_serching){
-      active_land_point = land_points.block(0,0,1,3);
-      land_pose.pose.position.x = land_points(0,0);
-      land_pose.pose.position.y = land_points(0,1);
+      active_land_point = land_points_temp.block(0,0,1,3);
+      land_pose.pose.position.x = land_points_temp(0,0);
+      land_pose.pose.position.y = land_points_temp(0,1);
       land_pose.pose.position.z = 10;
-      land_pose_dist = land_points(0,2);
+      land_pose_dist = land_points_temp(0,2);
       land_point_serching = false;
       for(int i = 50; ros::ok() && i > 0; --i){
         pos_setpoint.publish(land_pose);

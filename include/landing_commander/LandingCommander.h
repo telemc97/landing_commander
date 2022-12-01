@@ -183,7 +183,6 @@ class LandingCommander{
     }
     return isValid;
   }
-  int maxLandingPoints;
 
   mavros_msgs::State current_state;
   tf::TransformListener tfListener;
@@ -238,12 +237,13 @@ class LandingCommander{
   bool debug;
   bool publishOccupancy;
   bool safetyArea;
-  bool haveOccupancyGridEigen;
+  bool haveOccupancyGridEigen=false;
 
   //commander stuff
   geometry_msgs::PoseStamped land_pose;
   mavros_msgs::SetMode land_set_mode;
   mavros_msgs::SetMode position_set_mode;
   int land_pose_dist;
+  Eigen::MatrixX3i land_points_temp;
 };
 }
