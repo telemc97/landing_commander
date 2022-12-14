@@ -42,10 +42,10 @@ class LandingCommander{
   void toMatrix(const nav_msgs::OccupancyGrid& occupancyGrid, Eigen::MatrixXi& matrix, double& ratio_);
   
   void toOccupancyGrid(const Eigen::MatrixXi& matrix, nav_msgs::OccupancyGrid& occupancyGrid, const nav_msgs::MapMetaData& mapMetaData, const std_msgs::Header& header);
-
-  void splitncheckExpirimental(const Eigen::MatrixXi& matrix, Eigen::Array2i& robotIndex, double resolution, double minLandA, Eigen::MatrixX3i& land_waypoints, bool& land2base, int offset_w = 0, int offest_h = 0);
   
   void splincheckStride(const Eigen::MatrixXi& matrix, const geometry_msgs::Pose& origin, Eigen::MatrixX3i& land_waypoints, const double& ratio, const Eigen::Matrix<double,1,3>& coefficients_, const double& targetProcTime_, const Eigen::Array2i& robotIndex, const int& safetyRadius);
+
+  void getDistanceX(const Eigen::MatrixXi& matrix, Eigen::MatrixXi& distMatrix);
 
   bool isIn(Eigen::MatrixX2i& matrix, const int& x, const int& y){
     bool isIn;
@@ -75,6 +75,18 @@ class LandingCommander{
     return occupied_;
   }
 
+  inline int minDistInAreaX(const Eigen::Matrix<int,3,3>& matrix_){
+    int min = 123456;
+    for (int i=0; i<matrix_.rows(); i++){
+      for (int j=0; j<matrix_.cols(); j++){
+        if (matrix_(i,j)<min && matrix_(i,j)!=-1){
+          min = matrix_(i,j);
+        }
+      }
+    }
+    if (min == 123456){min = -1;}
+    return min;
+  }
 
   Eigen::MatrixX3i sortAscOrder (Eigen::MatrixX3i& land_waypoints){
     Eigen::Matrix<int,1,3> temp;
@@ -216,6 +228,7 @@ class LandingCommander{
   landing_commander::Debug debug_msg;
   nav_msgs::OccupancyGrid gridMapOutput;
   Eigen::MatrixXi OccupancyGridEigen;
+  Eigen::MatrixXi distanceMatrix;
   Eigen::Matrix<int,1,2> robotPose;
 
   ros::ServiceClient arming_client;
