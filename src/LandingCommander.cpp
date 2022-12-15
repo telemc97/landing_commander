@@ -105,8 +105,6 @@ void LandingCommander::mainCallback(const nav_msgs::OccupancyGrid::ConstPtr& gri
     checkEmMarkEm(OccupancyGridEigen,subGridRadius);
   }
 
-  // getDistance(OccupancyGridEigen, distanceMatrix);
-
   splincheckStride(OccupancyGridEigen, gridMap->info.origin, land_points, ratio, coefficients, targetProcTime, robotPose, subGridRadius);
   //land_points are in occupancy's grid coords from now on (with proper origin)
   if (debug){ 
@@ -139,27 +137,6 @@ void LandingCommander::mainCallback(const nav_msgs::OccupancyGrid::ConstPtr& gri
   }
 
 }
-
-// void LandingCommander::getDistanceX(const Eigen::MatrixXi& matrix, Eigen::MatrixXi& distMatrix){
-//   distMatrix.resize(matrix.rows()+2, matrix.cols()+2);
-//   distMatrix.setConstant(-1);
-//   for (int i=0; i<matrix.rows(); i++){
-//     for (int j=0; j<matrix.cols(); j++){
-//       if (matrix(i,j)==100){distMatrix(i,j)=0;}
-//     }
-//   }
-//   for (int i=1; i<distMatrix.rows()-1; i++){
-//     for (int j=1; j<distMatrix.cols()-1; j++){
-//       if (distMatrix(i,j)!=1){
-//         Eigen::Matrix<int,3,3> submap;
-//         submap = distMatrix.block(i-1,j-1,3,3);
-//         if (distMatrix(i,j)!=0){
-//           distMatrix(i,j) = minDistInAreaX(submap);
-//         }
-//       }
-//     }
-//   }
-// }
 
 
 void LandingCommander::splincheckStride(

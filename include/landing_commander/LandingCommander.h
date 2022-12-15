@@ -45,8 +45,6 @@ class LandingCommander{
   
   void splincheckStride(const Eigen::MatrixXi& matrix, const geometry_msgs::Pose& origin, Eigen::MatrixX3i& land_waypoints, const double& ratio, const Eigen::Matrix<double,1,3>& coefficients_, const double& targetProcTime_, const Eigen::Array2i& robotIndex, const int& safetyRadius);
 
-  void getDistanceX(const Eigen::MatrixXi& matrix, Eigen::MatrixXi& distMatrix);
-
   bool isIn(Eigen::MatrixX2i& matrix, const int& x, const int& y){
     bool isIn;
     for (int i=0;i<matrix.rows();i++){
@@ -73,19 +71,6 @@ class LandingCommander{
       }
     }
     return occupied_;
-  }
-
-  inline int minDistInAreaX(const Eigen::Matrix<int,3,3>& matrix_){
-    int min = 123456;
-    for (int i=0; i<matrix_.rows(); i++){
-      for (int j=0; j<matrix_.cols(); j++){
-        if (matrix_(i,j)<min && matrix_(i,j)!=-1){
-          min = matrix_(i,j);
-        }
-      }
-    }
-    if (min == 123456){min = -1;}
-    return min;
   }
 
   Eigen::MatrixX3i sortAscOrder (Eigen::MatrixX3i& land_waypoints){
