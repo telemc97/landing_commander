@@ -43,7 +43,10 @@ LandingCommander::LandingCommander(const ros::NodeHandle &nh_)
 
     occupancyPub = nodeHandle.advertise<nav_msgs::OccupancyGrid>("occupancy_output", 5, latchedTopics);
 
-    if (debug) {debugger = nodeHandle.advertise<landing_commander::Debug>("debug", 5, latchedTopics);}
+    if (debug) {
+      debugger = nodeHandle.advertise<landing_commander::LandingCommanderDebug>("Landing_Commander_Debug", 5, latchedTopics);
+      debugger_landingPoints = nodeHandle.advertise<landing_commander::LandingTargets>("Debug_Landing_Targets", 5, latchedTopics);
+      }
 
     pos_setpoint = nodeHandle.advertise<geometry_msgs::PoseStamped>("mavros/setpoint_position/local", 10);
 
@@ -84,6 +87,7 @@ LandingCommander::~LandingCommander(){
 
 
 void LandingCommander::mainCallback(const nav_msgs::OccupancyGrid::ConstPtr& gridMap, const mavros_msgs::State::ConstPtr& state, const mavros_msgs::ExtendedState::ConstPtr& extendedState){
+  auto start = std::chrono::high_resolution_clock::now();
   tf::StampedTransform worldToSensorTf;
   tfListener.lookupTransform(gridMap->header.frame_id, baseFrameId, gridMap->header.stamp, worldToSensorTf);
   tf::Point robotOriginTf = worldToSensorTf.getOrigin();
@@ -131,11 +135,26 @@ void LandingCommander::mainCallback(const nav_msgs::OccupancyGrid::ConstPtr& gri
     debug_msg.active_land_target.distance = active_land_point(2);
 
     debug_msg.land_point_serching = land_point_serching;
+    debug_msg.land_points_sum = land_points.rows();
 
     debug_msg.Header.stamp = ros::Time::now();
     debugger.publish(debug_msg);
-  }
 
+    landingTargets_msg.Header.stamp = ros::Time::now();
+    landingTargets_msg.landing_targets.clear();
+    for (int i=0; i<land_points.rows(); i++){
+      landingTarget_msg.x = land_points(i,0);
+      landingTarget_msg.y = land_points(i,1);
+      landingTarget_msg.distance = land_points(i,2);
+      landingTargets_msg.landing_targets.push_back(landingTarget_msg);
+    }
+    debug_msg.land_points_sum = land_points.rows();
+    debugger_landingPoints.publish(landingTargets_msg);
+
+    auto stop = std::chrono::high_resolution_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(stop - start);
+    debug_msg.total_time = duration.count();
+  }
 }
 
 

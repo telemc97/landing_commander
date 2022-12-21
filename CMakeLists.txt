@@ -23,9 +23,10 @@ find_package(catkin REQUIRED COMPONENTS ${PACKAGE_DEPENDENCIES})
 find_package(Eigen3 REQUIRED)
 
 add_message_files(FILES
-  Debug.msg
+  LandingCommanderDebug.msg
   LandingTarget.msg
   RobotPosition.msg
+  LandingTargets.msg
 )
 
 generate_messages(

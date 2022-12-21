@@ -8,7 +8,8 @@
 #include <message_filters/time_synchronizer.h>
 #include <message_filters/synchronizer.h>
 #include <message_filters/sync_policies/approximate_time.h>
-#include <landing_commander/Debug.h>
+#include <landing_commander/LandingCommanderDebug.h>
+#include <landing_commander/LandingTargets.h>
 
 #include <eigen_conversions/eigen_msg.h>
 
@@ -208,9 +209,13 @@ class LandingCommander{
   ros::Publisher occupancyPub;
   ros::Publisher pos_setpoint;
   ros::Publisher debugger;
+  ros::Publisher debugger_landingPoints;
+
   ros::Timer commanderTimer;
   ros::Timer guardTimer;
-  landing_commander::Debug debug_msg;
+  landing_commander::LandingCommanderDebug debug_msg;
+  landing_commander::LandingTargets landingTargets_msg;
+  landing_commander::LandingTarget landingTarget_msg;
   nav_msgs::OccupancyGrid gridMapOutput;
   Eigen::MatrixXi OccupancyGridEigen;
   Eigen::MatrixXi distanceMatrix;
