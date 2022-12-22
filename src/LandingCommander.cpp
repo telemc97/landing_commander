@@ -152,8 +152,8 @@ void LandingCommander::mainCallback(const nav_msgs::OccupancyGrid::ConstPtr& gri
     debugger_landingPoints.publish(landingTargets_msg);
 
     auto stop = std::chrono::high_resolution_clock::now();
-    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(stop - start);
-    debug_msg.total_time = duration.count();
+    auto duration = std::chrono::duration_cast<std::chrono::nanoseconds>(stop - start);
+    debug_msg.total_time = duration.count()*0.000001;
   }
 }
 
@@ -170,7 +170,7 @@ void LandingCommander::splincheckStride(
   {
   auto start = std::chrono::high_resolution_clock::now();
   double strideD = -((coefficients_(0)*(matrix.rows()*matrix.cols())+coefficients_(1)*ratio-targetProcTime_)/coefficients_(2));
-  if (strideD<1.0){strideD=minStride;}
+  if (strideD<minStride){strideD=minStride;}
   int stride = std::round(strideD);
   int solutions_sum = 0;
   int width = matrix.rows();
@@ -203,8 +203,8 @@ void LandingCommander::splincheckStride(
   land_waypoints = sortAscOrder(land_waypoints);
 
   auto stop = std::chrono::high_resolution_clock::now();
-  auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(stop - start);
-  if (debug){debug_msg.splitNCheckStride_time = duration.count();}
+  auto duration = std::chrono::duration_cast<std::chrono::nanoseconds>(stop - start);
+  if (debug){debug_msg.splitNCheckStride_time = duration.count()*0.000001;}
 }
 
 void LandingCommander::toMatrix(const nav_msgs::OccupancyGrid& occupancyGrid, Eigen::MatrixXi& matrix, double& ratio_){
@@ -225,8 +225,8 @@ void LandingCommander::toMatrix(const nav_msgs::OccupancyGrid& occupancyGrid, Ei
   int matrix_size = matrix.rows()*matrix.cols();
   ratio_ = (double)occupied_counter/matrix_size;
   auto stop = std::chrono::high_resolution_clock::now();
-  auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(stop - start);
-  if (debug){debug_msg.toMatrix_time = duration.count();}
+  auto duration = std::chrono::duration_cast<std::chrono::nanoseconds>(stop - start);
+  if (debug){debug_msg.toMatrix_time = duration.count()*0.000001;}
 }
 
 
@@ -245,8 +245,8 @@ void LandingCommander::toOccupancyGrid(const Eigen::MatrixXi& matrix, nav_msgs::
     }
   }
   auto stop = std::chrono::high_resolution_clock::now();
-  auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(stop - start);
-  if (debug){debug_msg.toOccupancyGrid_time = duration.count();}
+  auto duration = std::chrono::duration_cast<std::chrono::nanoseconds>(stop - start);
+  if (debug){debug_msg.toOccupancyGrid_time = duration.count()*0.000001;}
 }
 
 void LandingCommander::checkEmMarkEm(Eigen::MatrixXi& matrix, const int& radius){
@@ -264,8 +264,8 @@ void LandingCommander::checkEmMarkEm(Eigen::MatrixXi& matrix, const int& radius)
   }
   matrix = newMatrix.block(radius,radius,matrix.rows(),matrix.cols());
   auto stop = std::chrono::high_resolution_clock::now();
-  auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(stop - start);
-  if (debug){debug_msg.checkEmMarkEm_time = duration.count();}
+  auto duration = std::chrono::duration_cast<std::chrono::nanoseconds>(stop - start);
+  if (debug){debug_msg.checkEmMarkEm_time = duration.count()*0.000001;}
 }
 
 
@@ -321,7 +321,6 @@ void LandingCommander::commander(const ros::TimerEvent&){
 
       land_set_mode.request.custom_mode = "AUTO.LAND";
       position_set_mode.request.custom_mode = "POSCTL";
-
       if (waypointReached(robotPose, land_pose.pose.position) && mode=="OFFBOARD" && landState!=1){
         if(set_mode_client.call(land_set_mode) && land_set_mode.response.mode_sent){
           if(debug){ROS_INFO("Land mode enabled");}

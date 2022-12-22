@@ -1,9 +1,9 @@
 Header Header
-int64 toMatrix_time
-int64 checkEmMarkEm_time
-int64 splitNCheckStride_time
-int64 toOccupancyGrid_time
-int64 total_time
+float64 toMatrix_time
+float64 checkEmMarkEm_time
+float64 splitNCheckStride_time
+float64 toOccupancyGrid_time
+float64 total_time
 float64 ratio
 int64 land_points_sum
 int64 stride
