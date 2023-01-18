@@ -110,6 +110,12 @@ class LandingCommander{
 
   void commander(const ros::TimerEvent&);
 
+  void safety(const ros::TimerEvent&);
+
+  void checkLandingPoint();
+
+  void fallbackSafety();
+
   int metersToGrids(const double& meters, const double& res){
     int grids;
     grids = meters/res;
@@ -213,6 +219,7 @@ class LandingCommander{
 
   ros::Timer commanderTimer;
   ros::Timer guardTimer;
+  ros::Timer checkingTimer;
   landing_commander::LandingCommanderDebug debug_msg;
   landing_commander::LandingTargets landingTargets_msg;
   landing_commander::LandingTarget landingTarget_msg;
@@ -246,6 +253,7 @@ class LandingCommander{
   geometry_msgs::PoseStamped land_pose;
   mavros_msgs::SetMode land_set_mode;
   mavros_msgs::SetMode position_set_mode;
+  mavros_msgs::SetMode offboard_set_mode;
   int land_pose_dist;
   Eigen::MatrixX3i land_points_temp;
 };

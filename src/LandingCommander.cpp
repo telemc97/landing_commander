@@ -67,6 +67,14 @@ LandingCommander::LandingCommander(const ros::NodeHandle &nh_)
 
     land_points.conservativeResize(1,3);
     land_points.setZero();
+
+    land_set_mode.request.custom_mode = "AUTO.LAND";
+    position_set_mode.request.custom_mode = "POSCTL";
+    offboard_set_mode.request.custom_mode = "OFFBOARD";
+
+    active_land_point(0) = rand()% 21;
+    active_land_point(1) = rand()% 21;
+    active_land_point(2) = rand()% 21;
   }
 
 LandingCommander::~LandingCommander(){
@@ -121,7 +129,7 @@ void LandingCommander::mainCallback(const nav_msgs::OccupancyGrid::ConstPtr& gri
   }
   haveOccupancyGridEigen = true;
 
-  //Debug messages population
+  //Populate Debug messages
   if(debug){
     debug_msg.robot_position.x = robotPose(0);
     debug_msg.robot_position.y = robotPose(1);
@@ -286,6 +294,24 @@ void LandingCommander::Debug( Eigen::MatrixXi& matrix, const Eigen::MatrixX3i& l
 }
 
 
+void LandingCommander::checkLandingPoint(){
+  if ( !validPoint(active_land_point, land_points_temp) && land_point_serching==false ){
+    land_point_serching = true;
+    if (active_land_point.isZero() && land2base){
+      land2base = false;
+    }
+  }
+}
+
+void LandingCommander::fallbackSafety(){
+  if (landState=2 && !validPoint(active_land_point, land_points_temp)){
+    if(set_mode_client.call(offboard_set_mode) && position_set_mode.response.mode_sent){
+      if (debug){ROS_INFO("Switched back to offboard mode");}
+    }  
+  }
+}
+
+
 void LandingCommander::commander(const ros::TimerEvent&){
   if (haveOccupancyGridEigen){
     land_points_temp.resize(land_points.rows(), land_points.cols());
@@ -297,12 +323,7 @@ void LandingCommander::commander(const ros::TimerEvent&){
     }
 
     //check if landing point is occupied;
-    if ( !validPoint(active_land_point, land_points_temp) && land_point_serching==false ){
-      land_point_serching = true;
-      if (active_land_point.isZero() && land2base){
-        land2base = false;
-      }
-    }
+    checkLandingPoint();
 
     if(land_point_serching){
       active_land_point = land_points_temp.block(0,0,1,3);
@@ -319,14 +340,12 @@ void LandingCommander::commander(const ros::TimerEvent&){
     if (!land_point_serching){
       pos_setpoint.publish(land_pose);
 
-      land_set_mode.request.custom_mode = "AUTO.LAND";
-      position_set_mode.request.custom_mode = "POSCTL";
       if (waypointReached(robotPose, land_pose.pose.position) && mode=="OFFBOARD" && landState!=1){
         if(set_mode_client.call(land_set_mode) && land_set_mode.response.mode_sent){
           if(debug){ROS_INFO("Land mode enabled");}
         }
       }
-
+      fallbackSafety();
       if (landState==1 && armed && mode!="POSCTL"){
         if(set_mode_client.call(position_set_mode) && position_set_mode.response.mode_sent){
           if (debug){ROS_INFO("Switched back to position mode");}
