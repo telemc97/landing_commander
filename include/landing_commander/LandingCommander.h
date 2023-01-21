@@ -44,7 +44,7 @@ class LandingCommander{
   
   void toOccupancyGrid(const Eigen::MatrixXi& matrix, nav_msgs::OccupancyGrid& occupancyGrid, const nav_msgs::MapMetaData& mapMetaData, const std_msgs::Header& header);
   
-  void splincheckStride(const Eigen::MatrixXi& matrix, const geometry_msgs::Pose& origin, Eigen::MatrixX3i& land_waypoints, const double& ratio, const Eigen::Matrix<double,1,3>& coefficients_, const double& targetProcTime_, const Eigen::Array2i& robotIndex, const int& safetyRadius);
+  void splincheckStride(const Eigen::MatrixXi& matrix, const geometry_msgs::Pose& origin, Eigen::MatrixX3i& land_waypoints, const double& ratio, const double& stride_coef_, const double& targetProcTime_, const Eigen::Array2i& robotIndex, const int& safetyRadius);
 
   bool isIn(Eigen::MatrixX2i& matrix, const int& x, const int& y){
     bool isIn;
@@ -238,8 +238,8 @@ class LandingCommander{
 
   double minStride;
 
-  Eigen::Matrix<double,1,3> coefficients;
   double targetProcTime;
+  double stride_coef;
 
   bool latchedTopics;
   bool enableGuard;

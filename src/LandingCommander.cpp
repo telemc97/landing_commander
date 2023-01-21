@@ -15,11 +15,11 @@ LandingCommander::LandingCommander(const ros::NodeHandle &nh_)
   baseFrameId("base_link"),
   safetyRadius(2.0),
   ratio(0.0),
-  coefficients(0.0717,142.88,-80.628),
-  targetProcTime(200.0),
+  stride_coef(0.055),
+  targetProcTime(50.0),
   OccupancyGridEigen(0,0),
   latchedTopics(true),
-  minStride(3.0),
+  minStride(1.0),
   land2base(false),
   land_points(0,3),
   active_land_point(1,3),
@@ -32,9 +32,7 @@ LandingCommander::LandingCommander(const ros::NodeHandle &nh_)
     nodeHandle.param("target_proc_time", targetProcTime, targetProcTime);
     nodeHandle.param("safety_area", safetyArea, safetyArea);
     nodeHandle.param("minimum_strde", minStride, minStride);
-    nodeHandle.param("coefficient_matrix_size", coefficients(0), coefficients(0));
-    nodeHandle.param("coefficient_proc_time", coefficients(1), coefficients(1));
-    nodeHandle.param("coefficient_stride", coefficients(2), coefficients(2));
+    nodeHandle.param("stride_coef", stride_coef, stride_coef);
     nodeHandle.param("robot_frame", baseFrameId, baseFrameId);
     nodeHandle.param("land_to_base", land2base, land2base);
     nodeHandle.param("debug",debug,debug);
@@ -117,7 +115,7 @@ void LandingCommander::mainCallback(const nav_msgs::OccupancyGrid::ConstPtr& gri
     checkEmMarkEm(OccupancyGridEigen,subGridRadius);
   }
 
-  splincheckStride(OccupancyGridEigen, gridMap->info.origin, land_points, ratio, coefficients, targetProcTime, robotPose, subGridRadius);
+  splincheckStride(OccupancyGridEigen, gridMap->info.origin, land_points, ratio, stride_coef, targetProcTime, robotPose, subGridRadius);
   //land_points are in occupancy's grid coords from now on (with proper origin)
   if (debug){ 
     Debug(OccupancyGridEigen, land_points, gridMap->info.origin);
@@ -171,13 +169,13 @@ void LandingCommander::splincheckStride(
   const geometry_msgs::Pose& origin, 
   Eigen::MatrixX3i& land_waypoints, 
   const double& ratio, 
-  const Eigen::Matrix<double,1,3>& coefficients_, 
+  const double& stride_coef_, 
   const double& targetProcTime_, 
   const Eigen::Array2i& robotIndex, 
   const int& radius)
   {
   auto start = std::chrono::high_resolution_clock::now();
-  double strideD = -((coefficients_(0)*(matrix.rows()*matrix.cols())+coefficients_(1)*ratio-targetProcTime_)/coefficients_(2));
+  double strideD = (std::sqrt(((std::pow(((2*safetyRadius)+1),2)*matrix.rows()*matrix.cols())-(matrix.rows()*matrix.cols()*ratio))/targetProcTime_))*stride_coef_;
   if (strideD<minStride){strideD=minStride;}
   int stride = std::round(strideD);
   int solutions_sum = 0;
@@ -212,7 +210,10 @@ void LandingCommander::splincheckStride(
 
   auto stop = std::chrono::high_resolution_clock::now();
   auto duration = std::chrono::duration_cast<std::chrono::nanoseconds>(stop - start);
-  if (debug){debug_msg.splitNCheckStride_time = duration.count()*0.000001;}
+  if (debug){
+    debug_msg.splitNCheckStride_time = duration.count()*0.000001;
+    debug_msg.stride = stride;
+    }
 }
 
 void LandingCommander::toMatrix(const nav_msgs::OccupancyGrid& occupancyGrid, Eigen::MatrixXi& matrix, double& ratio_){
