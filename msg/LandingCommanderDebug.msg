@@ -7,6 +7,7 @@ float64 total_time
 float64 ratio
 int64 land_points_sum
 int64 stride
+int64 map_area
 bool land_point_serching
 LandingTarget landing_target
 LandingTarget active_land_target

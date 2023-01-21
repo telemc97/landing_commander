@@ -213,6 +213,7 @@ void LandingCommander::splincheckStride(
   if (debug){
     debug_msg.splitNCheckStride_time = duration.count()*0.000001;
     debug_msg.stride = stride;
+    debug_msg.map_area = matrix.rows()*matrix.cols();
     }
 }
 
