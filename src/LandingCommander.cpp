@@ -19,7 +19,7 @@ LandingCommander::LandingCommander(const ros::NodeHandle &nh_)
   targetProcTime(50.0),
   OccupancyGridEigen(0,0),
   latchedTopics(true),
-  minStride(1.0),
+  minStride(2.0),
   land2base(false),
   land_points(0,3),
   active_land_point(1,3),
