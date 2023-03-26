@@ -96,7 +96,7 @@ class LandingCommander{
     return IndexXY;
   }
 
-  int getLinearIndexFromIndex(int height, int width, Eigen::Array2i& Array){
+  int getLinearIndexFromIndex(int& height, int& width, Eigen::Array2i& Array){
     int LinearIndex;
     int x = Array(0);
     int y = Array(1);

@@ -23,7 +23,7 @@ LandingCommander::LandingCommander(const ros::NodeHandle &nh_)
   land2base(false),
   land_points(0,3),
   active_land_point(1,3),
-  safetyArea(true),
+  safetyArea(false),
   debug(true),
   publishOccupancy(true),
   land_points_temp(0,3)
@@ -54,7 +54,7 @@ LandingCommander::LandingCommander(const ros::NodeHandle &nh_)
 
 
 
-    gridMapSub = new message_filters::Subscriber<nav_msgs::OccupancyGrid>(nodeHandle, "/projected_map", 10);
+    gridMapSub = new message_filters::Subscriber<nav_msgs::OccupancyGrid>(nodeHandle, "/map_input", 10);
     tfgridMapSub = new tf::MessageFilter<nav_msgs::OccupancyGrid>(*gridMapSub, tfListener, baseFrameId, 10);
     fcuStateSub = new message_filters::Subscriber<mavros_msgs::State>(nodeHandle, "/mavros/state", 10);
     fcuExtendedStateSub = new message_filters::Subscriber<mavros_msgs::ExtendedState>(nodeHandle, "/mavros/extended_state", 10);
@@ -225,7 +225,6 @@ void LandingCommander::toMatrix(const nav_msgs::OccupancyGrid& occupancyGrid, Ei
   assert(rows_>0);
   matrix.resize(rows_,cols_);
   int occupied_counter=0;
-  //Occupancy grid is ROW MAJOR but we will treat it as collumn major for our sanity's sake
   for (int i=0;i<occupancyGrid.data.size();i++) {
     Eigen::Array2i IndexXY; 
     IndexXY = getIndexFromLinearIndex(rows_, i);

@@ -12,7 +12,7 @@
     <arg name="debug"                                   default="True"/>
     <arg name="show_occupancy_map"                      default="True"/>
     <arg name="mark_safety_area"                        default="True"/>
-    
+
     <node pkg="landing_commander" type="landing_commander_node" name="landing_commander">
       <param name="safety_dist"                   	 	      value="$(arg safety_dist)"/>
       <param name="target_proc_time"                   	 	  value="$(arg target_proc_time)"/>
