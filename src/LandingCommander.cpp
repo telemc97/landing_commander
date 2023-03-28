@@ -305,7 +305,7 @@ void LandingCommander::checkLandingPoint(){
 }
 
 void LandingCommander::fallbackSafety(){
-  if (landState=2 && !validPoint(active_land_point, land_points_temp)){
+  if ((landState==2 || landState==4) && !validPoint(active_land_point, land_points_temp)){
     if(set_mode_client.call(offboard_set_mode) && position_set_mode.response.mode_sent){
       if (debug){ROS_INFO("Switched back to offboard mode");}
     }  
