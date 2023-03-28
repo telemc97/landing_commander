@@ -217,6 +217,7 @@ void LandingCommander::splincheckStride(
     }
 }
 
+
 void LandingCommander::toMatrix(const nav_msgs::OccupancyGrid& occupancyGrid, Eigen::MatrixXi& matrix, double& ratio_){
   auto start = std::chrono::high_resolution_clock::now();
   int cols_ = occupancyGrid.info.height;
@@ -257,6 +258,7 @@ void LandingCommander::toOccupancyGrid(const Eigen::MatrixXi& matrix, nav_msgs::
   auto duration = std::chrono::duration_cast<std::chrono::nanoseconds>(stop - start);
   if (debug){debug_msg.toOccupancyGrid_time = duration.count()*0.000001;}
 }
+
 
 void LandingCommander::checkEmMarkEm(Eigen::MatrixXi& matrix, const int& radius){
   auto start = std::chrono::high_resolution_clock::now();
@@ -304,9 +306,11 @@ void LandingCommander::checkLandingPoint(){
   }
 }
 
+
 void LandingCommander::fallbackSafety(){
   if ((landState==2 || landState==4) && !validPoint(active_land_point, land_points_temp)){
-    if(set_mode_client.call(offboard_set_mode) && position_set_mode.response.mode_sent){
+    if((set_mode_client.call(offboard_set_mode) || set_mode_client.call(land_set_mode)) && position_set_mode.response.mode_sent){
+      ROS_WARN("OBSTACLE DETECTED DURING LANDING");
       if (debug){ROS_INFO("Switched back to offboard mode");}
     }  
   }
